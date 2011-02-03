@@ -8,7 +8,7 @@ typedef struct image_info_t image_info_t;
 
 struct image_info_t
 {
-    struct qxl_image *image;
+    struct compat_qxl_image *image;
     int ref_count;
     image_info_t *next;
 };
@@ -33,7 +33,7 @@ hash_and_copy (const uint8_t *src, int src_stride,
 	if (dest)
 	    memcpy (dest_line, src_line, n_bytes);
 
-	hash = hashlittle (src_line, n_bytes, hash);
+	hash = compat_hashlittle (src_line, n_bytes, hash);
     }
 
     return hash;
@@ -48,7 +48,7 @@ lookup_image_info (unsigned int hash,
 
     while (info)
     {
-	struct qxl_image *image = info->image;
+	struct compat_qxl_image *image = info->image;
 
 	if (image->descriptor.id == hash		&&
 	    image->descriptor.width == width		&&
@@ -95,17 +95,17 @@ remove_image_info (image_info_t *info)
     free (info);
 }
 
-struct qxl_image *
-qxl_image_create (qxl_screen_t *qxl, const uint8_t *data,
+struct compat_qxl_image *
+compat_qxl_image_create (compat_qxl_screen_t *compat_qxl, const uint8_t *data,
 		  int x, int y, int width, int height,
 		  int stride)
 {
     unsigned int hash;
     image_info_t *info;
 
-    data += y * stride + x * qxl->bytes_per_pixel;
+    data += y * stride + x * compat_qxl->bytes_per_pixel;
 
-    hash = hash_and_copy (data, stride, NULL, -1, qxl->bytes_per_pixel, width, height);
+    hash = hash_and_copy (data, stride, NULL, -1, compat_qxl->bytes_per_pixel, width, height);
 
     info = lookup_image_info (hash, width, height);
     if (info)
@@ -120,11 +120,11 @@ qxl_image_create (qxl_screen_t *qxl, const uint8_t *data,
 
 	for (i = 0; i < height; ++i)
 	{
-	    struct qxl_data_chunk *chunk;
+	    struct compat_qxl_data_chunk *chunk;
 	    const uint8_t *src_line = data + i * stride;
 	    uint32_t *dest_line;
 		
-	    chunk = virtual_address (qxl, u64_to_pointer (info->image->u.bitmap.data));
+	    chunk = virtual_address (compat_qxl, u64_to_pointer (info->image->u.bitmap.data));
 	    
 	    dest_line = (uint32_t *)chunk->data + width * i;
 
@@ -147,9 +147,9 @@ qxl_image_create (qxl_screen_t *qxl, const uint8_t *data,
     }
     else
     {
-	struct qxl_image *image;
-	struct qxl_data_chunk *chunk;
-	int dest_stride = width * qxl->bytes_per_pixel;
+	struct compat_qxl_image *image;
+	struct compat_qxl_data_chunk *chunk;
+	int dest_stride = width * compat_qxl->bytes_per_pixel;
 	image_info_t *info;
 
 #if 0
@@ -159,7 +159,7 @@ qxl_image_create (qxl_screen_t *qxl, const uint8_t *data,
 	/* Chunk */
 	
 	/* FIXME: Check integer overflow */
-	chunk = qxl_allocnf (qxl, sizeof *chunk + height * dest_stride);
+	chunk = compat_qxl_allocnf (compat_qxl, sizeof *chunk + height * dest_stride);
 	
 	chunk->data_size = height * dest_stride;
 	chunk->prev_chunk = 0;
@@ -167,10 +167,10 @@ qxl_image_create (qxl_screen_t *qxl, const uint8_t *data,
 	
 	hash_and_copy (data, stride,
 		       chunk->data, dest_stride,
-		       qxl->bytes_per_pixel, width, height);
+		       compat_qxl->bytes_per_pixel, width, height);
 
 	/* Image */
-	image = qxl_allocnf (qxl, sizeof *image);
+	image = compat_qxl_allocnf (compat_qxl, sizeof *image);
 
 	image->descriptor.id = 0;
 	image->descriptor.type = QXL_IMAGE_TYPE_BITMAP;
@@ -179,7 +179,7 @@ qxl_image_create (qxl_screen_t *qxl, const uint8_t *data,
 	image->descriptor.width = width;
 	image->descriptor.height = height;
 
-	if (qxl->bytes_per_pixel == 2)
+	if (compat_qxl->bytes_per_pixel == 2)
 	{
 	    image->u.bitmap.format = QXL_BITMAP_FMT_16BIT;
 	}
@@ -191,9 +191,9 @@ qxl_image_create (qxl_screen_t *qxl, const uint8_t *data,
 	image->u.bitmap.flags = QXL_BITMAP_TOP_DOWN;
 	image->u.bitmap.x = width;
 	image->u.bitmap.y = height;
-	image->u.bitmap.stride = width * qxl->bytes_per_pixel;
+	image->u.bitmap.stride = width * compat_qxl->bytes_per_pixel;
 	image->u.bitmap.palette = 0;
-	image->u.bitmap.data = physical_address (qxl, chunk);
+	image->u.bitmap.data = physical_address (compat_qxl, chunk);
 
 #if 0
 	ErrorF ("%p has size %d %d\n", image, width, height);
@@ -218,13 +218,13 @@ qxl_image_create (qxl_screen_t *qxl, const uint8_t *data,
 }
 
 void
-qxl_image_destroy (qxl_screen_t *qxl,
-		   struct qxl_image *image)
+compat_qxl_image_destroy (compat_qxl_screen_t *compat_qxl,
+		   struct compat_qxl_image *image)
 {
-    struct qxl_data_chunk *chunk;
+    struct compat_qxl_data_chunk *chunk;
     image_info_t *info;
 
-    chunk = virtual_address (qxl, u64_to_pointer (image->u.bitmap.data));
+    chunk = virtual_address (compat_qxl, u64_to_pointer (image->u.bitmap.data));
     
     info = lookup_image_info (image->descriptor.id,
 			      image->descriptor.width,
@@ -244,12 +244,12 @@ qxl_image_destroy (qxl_screen_t *qxl,
 	remove_image_info (info);
     }
 
-    qxl_free (qxl->mem, chunk);
-    qxl_free (qxl->mem, image);
+    compat_qxl_free (compat_qxl->mem, chunk);
+    compat_qxl_free (compat_qxl->mem, image);
 }
 
 void
-qxl_drop_image_cache (qxl_screen_t *qxl)
+compat_qxl_drop_image_cache (compat_qxl_screen_t *compat_qxl)
 {
     memset (image_table, 0, HASH_SIZE * sizeof (image_info_t *));
 }

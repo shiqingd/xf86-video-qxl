@@ -5,11 +5,11 @@
 
 struct ring
 {
-    struct qxl_ring_header	header;
+    struct compat_qxl_ring_header	header;
     uint8_t			elements[0];
 };
 
-struct qxl_ring
+struct compat_qxl_ring
 {
     volatile struct ring *ring;
     int			element_size;
@@ -17,13 +17,13 @@ struct qxl_ring
     int			prod_notify;
 };
 
-struct qxl_ring *
-qxl_ring_create (struct qxl_ring_header *header,
+struct compat_qxl_ring *
+compat_qxl_ring_create (struct compat_qxl_ring_header *header,
 		 int                     element_size,
 		 int                     n_elements,
 		 int			 prod_notify)
 {
-    struct qxl_ring *ring;
+    struct compat_qxl_ring *ring;
 
     ring = malloc (sizeof *ring);
     if (!ring)
@@ -38,10 +38,10 @@ qxl_ring_create (struct qxl_ring_header *header,
 }
 
 void
-qxl_ring_push (struct qxl_ring *ring,
+compat_qxl_ring_push (struct compat_qxl_ring *ring,
 	       const void      *new_elt)
 {
-    volatile struct qxl_ring_header *header = &(ring->ring->header);
+    volatile struct compat_qxl_ring_header *header = &(ring->ring->header);
     volatile uint8_t *elt;
     int idx;
 
@@ -66,10 +66,10 @@ qxl_ring_push (struct qxl_ring *ring,
 }
 
 Bool
-qxl_ring_pop (struct qxl_ring *ring,
+compat_qxl_ring_pop (struct compat_qxl_ring *ring,
 	      void            *element)
 {
-    volatile struct qxl_ring_header *header = &(ring->ring->header);
+    volatile struct compat_qxl_ring_header *header = &(ring->ring->header);
     volatile uint8_t *ring_elt;
     int idx;
 
@@ -87,7 +87,7 @@ qxl_ring_pop (struct qxl_ring *ring,
 }
 
 void
-qxl_ring_wait_idle (struct qxl_ring *ring)
+compat_qxl_ring_wait_idle (struct compat_qxl_ring *ring)
 {
     while (ring->ring->header.cons != ring->ring->header.prod)
     {

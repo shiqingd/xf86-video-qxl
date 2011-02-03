@@ -22,7 +22,7 @@ struct block
     } u;
 };
 
-struct qxl_mem
+struct compat_qxl_mem
 {
     void *		base;
     unsigned long	n_bytes;
@@ -35,7 +35,7 @@ struct qxl_mem
 };
 
 static void
-initialize (struct qxl_mem *mem)
+initialize (struct compat_qxl_mem *mem)
 {
     mem->unused = (struct block *)mem->base;
     mem->unused->n_bytes = mem->n_bytes;
@@ -47,10 +47,10 @@ initialize (struct qxl_mem *mem)
     mem->n_freed_blocks = 0;
 }
 
-struct qxl_mem *
-qxl_mem_create (void *base, unsigned long n_bytes)
+struct compat_qxl_mem *
+compat_qxl_mem_create (void *base, unsigned long n_bytes)
 {
-    struct qxl_mem *mem = NULL;
+    struct compat_qxl_mem *mem = NULL;
 
     mem = calloc (sizeof (*mem), 1);
     if (!mem)
@@ -66,13 +66,13 @@ out:
 }
 
 void
-qxl_mem_free_all (struct qxl_mem *mem)
+compat_qxl_mem_free_all (struct compat_qxl_mem *mem)
 {
     initialize (mem);
 }
 
 void
-qxl_mem_dump_stats (struct qxl_mem *mem, const char *header)
+compat_qxl_mem_dump_stats (struct compat_qxl_mem *mem, const char *header)
 {
     struct block *b;
     int n_blocks;
@@ -122,7 +122,7 @@ qxl_mem_dump_stats (struct qxl_mem *mem, const char *header)
 }
 
 void *
-qxl_alloc (struct qxl_mem *mem, unsigned long n_bytes)
+compat_qxl_alloc (struct compat_qxl_mem *mem, unsigned long n_bytes)
 {
     struct block *b, *prev;
 
@@ -202,7 +202,7 @@ qxl_alloc (struct qxl_mem *mem, unsigned long n_bytes)
     /* If we get here, we are out of memory, so print some stats */
 #if 0
     fprintf (stderr, "Failing to allocate %lu bytes\n", n_bytes);
-    qxl_mem_dump_stats (mem, "out of memory");
+    compat_qxl_mem_dump_stats (mem, "out of memory");
 #endif
     
     return NULL;
@@ -213,7 +213,7 @@ qxl_alloc (struct qxl_mem *mem, unsigned long n_bytes)
  * last unused block.
  */
 static void
-find_neighbours (struct qxl_mem *mem, void *data,
+find_neighbours (struct compat_qxl_mem *mem, void *data,
 		 struct block **before, struct block **after)
 {
     struct block *b;
@@ -237,7 +237,7 @@ find_neighbours (struct qxl_mem *mem, void *data,
 }
 
 void
-qxl_free (struct qxl_mem *mem, void *d)
+compat_qxl_free (struct compat_qxl_mem *mem, void *d)
 {
     struct block *b = d - sizeof (unsigned long);
     struct block *before, *after;
@@ -248,7 +248,7 @@ qxl_free (struct qxl_mem *mem, void *d)
 #if 0
     printf ("freeing %p (%d bytes)\n", b, b->n_bytes);
     
-    qxl_mem_dump_stats (mem, "before free");
+    compat_qxl_mem_dump_stats (mem, "before free");
 #endif
     
     find_neighbours (mem, (void *)b, &before, &after);
@@ -316,6 +316,6 @@ qxl_free (struct qxl_mem *mem, void *d)
     }
 
 #if 0
-    qxl_mem_dump_stats (mem, "after free");
+    compat_qxl_mem_dump_stats (mem, "after free");
 #endif
 }

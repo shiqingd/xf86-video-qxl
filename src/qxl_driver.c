@@ -1417,8 +1417,15 @@ qxl_pci_probe(DriverPtr drv, int entity, struct pci_device *dev, intptr_t match)
 	pScrn->driverPrivate = xnfcalloc(sizeof(qxl_screen_t), 1);
     qxl = pScrn->driverPrivate;
     qxl->pci = dev;
-    
-    qxl_init_scrn(pScrn);
+
+    if (qxl->pci->revision == 0x01)
+    {
+	compat_init_scrn (pScrn);
+    }
+    else
+    {
+	qxl_init_scrn(pScrn);
+    }
     
     return TRUE;
 }

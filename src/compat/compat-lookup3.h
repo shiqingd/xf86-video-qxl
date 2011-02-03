@@ -21,6 +21,6 @@ typedef UINT8 uint8_t;
 
 #endif
 
-uint32_t hashlittle( const void *key, size_t length, uint32_t initval);
+uint32_t compat_hashlittle( const void *key, size_t length, uint32_t initval);
 
 #endif

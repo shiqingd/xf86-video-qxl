@@ -20,10 +20,10 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-/** \file qxl_driver.c
+/** \file compat_qxl_driver.c
  * \author Adam Jackson <ajax@redhat.com>
  *
- * This is qxl, a driver for the Qumranet paravirtualized graphics device
+ * This is compat_qxl, a driver for the Qumranet paravirtualized graphics device
  * in qemu.
  */
 
@@ -39,12 +39,12 @@
 #define CHECK_POINT()
 
 static int
-garbage_collect (qxl_screen_t *qxl)
+garbage_collect (compat_qxl_screen_t *compat_qxl)
 {
     uint64_t id;
     int i = 0;
     
-    while (qxl_ring_pop (qxl->release_ring, &id))
+    while (compat_qxl_ring_pop (compat_qxl->release_ring, &id))
     {
 	while (id)
 	{
@@ -54,9 +54,9 @@ garbage_collect (qxl_screen_t *qxl)
 	     */
 #define POINTER_MASK ((1 << 2) - 1)
 	    
-	    union qxl_release_info *info = u64_to_pointer (id & ~POINTER_MASK);
-	    struct qxl_cursor_cmd *cmd = (struct qxl_cursor_cmd *)info;
-	    struct qxl_drawable *drawable = (struct qxl_drawable *)info;
+	    union compat_qxl_release_info *info = u64_to_pointer (id & ~POINTER_MASK);
+	    struct compat_qxl_cursor_cmd *cmd = (struct compat_qxl_cursor_cmd *)info;
+	    struct compat_qxl_drawable *drawable = (struct compat_qxl_drawable *)info;
 	    int is_cursor = FALSE;
 
 	    if ((id & POINTER_MASK) == 1)
@@ -64,22 +64,22 @@ garbage_collect (qxl_screen_t *qxl)
 
 	    if (is_cursor && cmd->type == QXL_CURSOR_SET)
 	    {
-		struct qxl_cursor *cursor = (void *)virtual_address (
-		    qxl, u64_to_pointer (cmd->u.set.shape));
+		struct compat_qxl_cursor *cursor = (void *)virtual_address (
+		    compat_qxl, u64_to_pointer (cmd->u.set.shape));
 
-		qxl_free (qxl->mem, cursor);
+		compat_qxl_free (compat_qxl->mem, cursor);
 	    }
 	    else if (!is_cursor && drawable->type == QXL_DRAW_COPY)
 	    {
-		struct qxl_image *image = virtual_address (
-		    qxl, u64_to_pointer (drawable->u.copy.src_bitmap));
+		struct compat_qxl_image *image = virtual_address (
+		    compat_qxl, u64_to_pointer (drawable->u.copy.src_bitmap));
 
-		qxl_image_destroy (qxl, image);
+		compat_qxl_image_destroy (compat_qxl, image);
 	    }
 	    
 	    id = info->next;
 	    
-	    qxl_free (qxl->mem, info);
+	    compat_qxl_free (compat_qxl->mem, info);
 	}
     }
 
@@ -87,7 +87,7 @@ garbage_collect (qxl_screen_t *qxl)
 }
 
 static void
-qxl_usleep (int useconds)
+compat_qxl_usleep (int useconds)
 {
     struct timespec t;
 
@@ -102,35 +102,35 @@ qxl_usleep (int useconds)
 
 #if 0
 static void
-push_update_area (qxl_screen_t *qxl, const struct qxl_rect *area)
+push_update_area (compat_qxl_screen_t *compat_qxl, const struct compat_qxl_rect *area)
 {
-    struct qxl_update_cmd *update = qxl_allocnf (qxl, sizeof *update);
-    struct qxl_command cmd;
+    struct compat_qxl_update_cmd *update = compat_qxl_allocnf (compat_qxl, sizeof *update);
+    struct compat_qxl_command cmd;
 
     update->release_info.id = (uint64_t)update;
     update->area = *area;
     update->update_id = 0;
 
     cmd.type = QXL_CMD_UDPATE;
-    cmd.data = physical_address (qxl, update);
+    cmd.data = physical_address (compat_qxl, update);
 
-    qxl_ring_push (qxl->command_ring, &cmd);
+    compat_qxl_ring_push (compat_qxl->command_ring, &cmd);
 }
 #endif
 
 void *
-qxl_allocnf (qxl_screen_t *qxl, unsigned long size)
+compat_qxl_allocnf (compat_qxl_screen_t *compat_qxl, unsigned long size)
 {
     void *result;
     int n_attempts = 0;
     static int nth_oom = 1;
 
-    garbage_collect (qxl);
+    garbage_collect (compat_qxl);
     
-    while (!(result = qxl_alloc (qxl->mem, size)))
+    while (!(result = compat_qxl_alloc (compat_qxl->mem, size)))
     {
-	struct qxl_ram_header *ram_header = (void *)((unsigned long)qxl->ram +
-						     qxl->rom->ram_header_offset);
+	struct compat_qxl_ram_header *ram_header = (void *)((unsigned long)compat_qxl->ram +
+						     compat_qxl->rom->ram_header_offset);
 	
 	/* Rather than go out of memory, we simply tell the
 	 * device to dump everything
@@ -140,21 +140,21 @@ qxl_allocnf (qxl_screen_t *qxl, unsigned long size)
 	ram_header->update_area.left = 0;
 	ram_header->update_area.right = 800;
 	
-	outb (qxl->io_base + QXL_IO_UPDATE_AREA, 0);
+	outb (compat_qxl->io_base + QXL_IO_UPDATE_AREA, 0);
 	
  	ErrorF ("eliminated memory (%d)\n", nth_oom++);
 
-	outb (qxl->io_base + QXL_IO_NOTIFY_OOM, 0);
+	outb (compat_qxl->io_base + QXL_IO_NOTIFY_OOM, 0);
 
-	qxl_usleep (10000);
+	compat_qxl_usleep (10000);
 	
-	if (garbage_collect (qxl))
+	if (garbage_collect (compat_qxl))
 	{
 	    n_attempts = 0;
 	}
 	else if (++n_attempts == 1000)
 	{
-	    qxl_mem_dump_stats (qxl->mem, "Out of mem - stats\n");
+	    compat_qxl_mem_dump_stats (compat_qxl->mem, "Out of mem - stats\n");
 	    
 	    fprintf (stderr, "Out of memory\n");
 	    exit (1);
@@ -165,127 +165,127 @@ qxl_allocnf (qxl_screen_t *qxl, unsigned long size)
 }
 
 static Bool
-qxl_blank_screen(ScreenPtr pScreen, int mode)
+compat_qxl_blank_screen(ScreenPtr pScreen, int mode)
 {
     return TRUE;
 }
 
 static void
-qxl_unmap_memory(qxl_screen_t *qxl, int scrnIndex)
+compat_qxl_unmap_memory(compat_qxl_screen_t *compat_qxl, int scrnIndex)
 {
 #ifdef XSERVER_LIBPCIACCESS
-    if (qxl->ram)
-	pci_device_unmap_range(qxl->pci, qxl->ram, qxl->pci->regions[0].size);
-    if (qxl->vram)
-	pci_device_unmap_range(qxl->pci, qxl->vram, qxl->pci->regions[1].size);
-    if (qxl->rom)
-	pci_device_unmap_range(qxl->pci, qxl->rom, qxl->pci->regions[2].size);
+    if (compat_qxl->ram)
+	pci_device_unmap_range(compat_qxl->pci, compat_qxl->ram, compat_qxl->pci->regions[0].size);
+    if (compat_qxl->vram)
+	pci_device_unmap_range(compat_qxl->pci, compat_qxl->vram, compat_qxl->pci->regions[1].size);
+    if (compat_qxl->rom)
+	pci_device_unmap_range(compat_qxl->pci, compat_qxl->rom, compat_qxl->pci->regions[2].size);
 #else
-    if (qxl->ram)
-	xf86UnMapVidMem(scrnIndex, qxl->ram, (1 << qxl->pci->size[0]));
-    if (qxl->vram)
-	xf86UnMapVidMem(scrnIndex, qxl->vram, (1 << qxl->pci->size[1]));
-    if (qxl->rom)
-	xf86UnMapVidMem(scrnIndex, qxl->rom, (1 << qxl->pci->size[2]));
+    if (compat_qxl->ram)
+	xf86UnMapVidMem(scrnIndex, compat_qxl->ram, (1 << compat_qxl->pci->size[0]));
+    if (compat_qxl->vram)
+	xf86UnMapVidMem(scrnIndex, compat_qxl->vram, (1 << compat_qxl->pci->size[1]));
+    if (compat_qxl->rom)
+	xf86UnMapVidMem(scrnIndex, compat_qxl->rom, (1 << compat_qxl->pci->size[2]));
 #endif
 
-    qxl->ram = qxl->ram_physical = qxl->vram = qxl->rom = NULL;
+    compat_qxl->ram = compat_qxl->ram_physical = compat_qxl->vram = compat_qxl->rom = NULL;
 
-    qxl->num_modes = 0;
-    qxl->modes = NULL;
+    compat_qxl->num_modes = 0;
+    compat_qxl->modes = NULL;
 }
 
 static Bool
-qxl_map_memory(qxl_screen_t *qxl, int scrnIndex)
+compat_qxl_map_memory(compat_qxl_screen_t *compat_qxl, int scrnIndex)
 {
 #ifdef XSERVER_LIBPCIACCESS
-    pci_device_map_range(qxl->pci, qxl->pci->regions[0].base_addr, 
-			 qxl->pci->regions[0].size,
+    pci_device_map_range(compat_qxl->pci, compat_qxl->pci->regions[0].base_addr, 
+			 compat_qxl->pci->regions[0].size,
 			 PCI_DEV_MAP_FLAG_WRITABLE | PCI_DEV_MAP_FLAG_WRITE_COMBINE,
-			 &qxl->ram);
-    qxl->ram_physical = u64_to_pointer (qxl->pci->regions[0].base_addr);
+			 &compat_qxl->ram);
+    compat_qxl->ram_physical = u64_to_pointer (compat_qxl->pci->regions[0].base_addr);
 
-    pci_device_map_range(qxl->pci, qxl->pci->regions[1].base_addr, 
-			 qxl->pci->regions[1].size,
+    pci_device_map_range(compat_qxl->pci, compat_qxl->pci->regions[1].base_addr, 
+			 compat_qxl->pci->regions[1].size,
 			 PCI_DEV_MAP_FLAG_WRITABLE,
-			 &qxl->vram);
+			 &compat_qxl->vram);
 
-    pci_device_map_range(qxl->pci, qxl->pci->regions[2].base_addr, 
-			 qxl->pci->regions[2].size, 0,
-			 (void **)&qxl->rom);
+    pci_device_map_range(compat_qxl->pci, compat_qxl->pci->regions[2].base_addr, 
+			 compat_qxl->pci->regions[2].size, 0,
+			 (void **)&compat_qxl->rom);
 
-    qxl->io_base = qxl->pci->regions[3].base_addr;
+    compat_qxl->io_base = compat_qxl->pci->regions[3].base_addr;
 #else
-    qxl->ram = xf86MapPciMem(scrnIndex, VIDMEM_FRAMEBUFFER,
-			     qxl->pci_tag, qxl->pci->memBase[0],
-			     (1 << qxl->pci->size[0]));
-    qxl->ram_physical = (void *)qxl->pci->memBase[0];
+    compat_qxl->ram = xf86MapPciMem(scrnIndex, VIDMEM_FRAMEBUFFER,
+			     compat_qxl->pci_tag, compat_qxl->pci->memBase[0],
+			     (1 << compat_qxl->pci->size[0]));
+    compat_qxl->ram_physical = (void *)compat_qxl->pci->memBase[0];
     
-    qxl->vram = xf86MapPciMem(scrnIndex, VIDMEM_MMIO | VIDMEM_MMIO_32BIT,
-			      qxl->pci_tag, qxl->pci->memBase[1],
-			      (1 << qxl->pci->size[1]));
+    compat_qxl->vram = xf86MapPciMem(scrnIndex, VIDMEM_MMIO | VIDMEM_MMIO_32BIT,
+			      compat_qxl->pci_tag, compat_qxl->pci->memBase[1],
+			      (1 << compat_qxl->pci->size[1]));
     
-    qxl->rom = xf86MapPciMem(scrnIndex, VIDMEM_MMIO | VIDMEM_MMIO_32BIT,
-			     qxl->pci_tag, qxl->pci->memBase[2],
-			     (1 << qxl->pci->size[2]));
+    compat_qxl->rom = xf86MapPciMem(scrnIndex, VIDMEM_MMIO | VIDMEM_MMIO_32BIT,
+			     compat_qxl->pci_tag, compat_qxl->pci->memBase[2],
+			     (1 << compat_qxl->pci->size[2]));
     
-    qxl->io_base = qxl->pci->ioBase[3];
+    compat_qxl->io_base = compat_qxl->pci->ioBase[3];
 #endif
-    if (!qxl->ram || !qxl->vram || !qxl->rom)
+    if (!compat_qxl->ram || !compat_qxl->vram || !compat_qxl->rom)
 	return FALSE;
 
     xf86DrvMsg(scrnIndex, X_INFO, "ram at %p; vram at %p; rom at %p\n",
-	       qxl->ram, qxl->vram, qxl->rom);
+	       compat_qxl->ram, compat_qxl->vram, compat_qxl->rom);
 
-    qxl->num_modes = *(uint32_t *)((uint8_t *)qxl->rom + qxl->rom->modes_offset);
-    qxl->modes = (struct qxl_mode *)(((uint8_t *)qxl->rom) + qxl->rom->modes_offset + 4);
+    compat_qxl->num_modes = *(uint32_t *)((uint8_t *)compat_qxl->rom + compat_qxl->rom->modes_offset);
+    compat_qxl->modes = (struct compat_qxl_mode *)(((uint8_t *)compat_qxl->rom) + compat_qxl->rom->modes_offset + 4);
 
     return TRUE;
 }
 
 static void
-qxl_save_state(ScrnInfoPtr pScrn)
+compat_qxl_save_state(ScrnInfoPtr pScrn)
 {
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
 
-    vgaHWSaveFonts(pScrn, &qxl->vgaRegs);
+    vgaHWSaveFonts(pScrn, &compat_qxl->vgaRegs);
 }
 
 static void
-qxl_restore_state(ScrnInfoPtr pScrn)
+compat_qxl_restore_state(ScrnInfoPtr pScrn)
 {
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
 
-    vgaHWRestoreFonts(pScrn, &qxl->vgaRegs);
+    vgaHWRestoreFonts(pScrn, &compat_qxl->vgaRegs);
 }
 
 static Bool
-qxl_close_screen(int scrnIndex, ScreenPtr pScreen)
+compat_qxl_close_screen(int scrnIndex, ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86Screens[scrnIndex];
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
 
     if (pScrn->vtSema) {
-        qxl_restore_state(pScrn);
-	qxl_unmap_memory(qxl, scrnIndex);
+        compat_qxl_restore_state(pScrn);
+	compat_qxl_unmap_memory(compat_qxl, scrnIndex);
     }
     pScrn->vtSema = FALSE;
 
-    xfree(qxl->fb);
+    xfree(compat_qxl->fb);
 
-    pScreen->CreateScreenResources = qxl->create_screen_resources;
-    pScreen->CloseScreen = qxl->close_screen;
+    pScreen->CreateScreenResources = compat_qxl->create_screen_resources;
+    pScreen->CloseScreen = compat_qxl->close_screen;
 
     return pScreen->CloseScreen(scrnIndex, pScreen);
 }
 
 static Bool
-qxl_switch_mode(int scrnIndex, DisplayModePtr p, int flags)
+compat_qxl_switch_mode(int scrnIndex, DisplayModePtr p, int flags)
 {
-    qxl_screen_t *qxl = xf86Screens[scrnIndex]->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = xf86Screens[scrnIndex]->driverPrivate;
     int mode_index = (int)(unsigned long)p->Private;
-    struct qxl_mode *m = qxl->modes + mode_index;
-    ScreenPtr pScreen = qxl->pScrn->pScreen;
+    struct compat_qxl_mode *m = compat_qxl->modes + mode_index;
+    ScreenPtr pScreen = compat_qxl->pScrn->pScreen;
 
     if (!m)
 	return FALSE;
@@ -294,11 +294,11 @@ qxl_switch_mode(int scrnIndex, DisplayModePtr p, int flags)
     xf86DrvMsg (scrnIndex, X_INFO, "Setting mode %d (%d x %d) (%d x %d) %p\n",
 		m->id, m->x_res, m->y_res, p->HDisplay, p->VDisplay, p);
 
-    outb(qxl->io_base + QXL_IO_RESET, 0);
+    outb(compat_qxl->io_base + QXL_IO_RESET, 0);
     
-    outb(qxl->io_base + QXL_IO_SET_MODE, m->id);
+    outb(compat_qxl->io_base + QXL_IO_SET_MODE, m->id);
 
-    qxl->bytes_per_pixel = (qxl->pScrn->bitsPerPixel + 7) / 8;
+    compat_qxl->bytes_per_pixel = (compat_qxl->pScrn->bitsPerPixel + 7) / 8;
 
     /* If this happens out of ScreenInit, we won't have a screen yet. In that
      * case createScreenResources will make things right.
@@ -313,15 +313,15 @@ qxl_switch_mode(int scrnIndex, DisplayModePtr p, int flags)
 		pPixmap,
 		m->x_res, m->y_res,
 		-1, -1,
-		qxl->pScrn->displayWidth * qxl->bytes_per_pixel,
+		compat_qxl->pScrn->displayWidth * compat_qxl->bytes_per_pixel,
 		NULL);
 	}
     }
     
-    if (qxl->mem)
+    if (compat_qxl->mem)
     {
-	qxl_mem_free_all (qxl->mem);
-	qxl_drop_image_cache (qxl);
+	compat_qxl_mem_free_all (compat_qxl->mem);
+	compat_qxl_drop_image_cache (compat_qxl);
     }
 
     
@@ -329,9 +329,9 @@ qxl_switch_mode(int scrnIndex, DisplayModePtr p, int flags)
 }
 
 static void
-push_drawable (qxl_screen_t *qxl, struct qxl_drawable *drawable)
+push_drawable (compat_qxl_screen_t *compat_qxl, struct compat_qxl_drawable *drawable)
 {
-    struct qxl_command cmd;
+    struct compat_qxl_command cmd;
 
     /* When someone runs "init 3", the device will be 
      * switched into VGA mode and there is nothing we
@@ -345,25 +345,25 @@ push_drawable (qxl_screen_t *qxl, struct qxl_drawable *drawable)
      * The author of the QXL device is opposed to this
      * for reasons I don't understand.
      */
-    if (qxl->rom->mode != ~0)
+    if (compat_qxl->rom->mode != ~0)
     {
 	cmd.type = QXL_CMD_DRAW;
-	cmd.data = physical_address (qxl, drawable);
+	cmd.data = physical_address (compat_qxl, drawable);
 	    
-	qxl_ring_push (qxl->command_ring, &cmd);
+	compat_qxl_ring_push (compat_qxl->command_ring, &cmd);
     }
 }
 
-static struct qxl_drawable *
-make_drawable (qxl_screen_t *qxl, uint8_t type,
-	       const struct qxl_rect *rect
+static struct compat_qxl_drawable *
+make_drawable (compat_qxl_screen_t *compat_qxl, uint8_t type,
+	       const struct compat_qxl_rect *rect
 	       /* , pRegion clip */)
 {
-    struct qxl_drawable *drawable;
+    struct compat_qxl_drawable *drawable;
 
     CHECK_POINT();
     
-    drawable = qxl_allocnf (qxl, sizeof *drawable);
+    drawable = compat_qxl_allocnf (compat_qxl, sizeof *drawable);
 
     CHECK_POINT();
 
@@ -383,7 +383,7 @@ make_drawable (qxl_screen_t *qxl, uint8_t type,
     if (rect)
 	drawable->bbox = *rect;
 
-    drawable->mm_time = qxl->rom->mm_clock;
+    drawable->mm_time = compat_qxl->rom->mm_clock;
 
     CHECK_POINT();
     
@@ -405,7 +405,7 @@ enum ROPDescriptor {
 };
 
 static void
-undamage_box (qxl_screen_t *qxl, const struct qxl_rect *rect)
+undamage_box (compat_qxl_screen_t *compat_qxl, const struct compat_qxl_rect *rect)
 {
     RegionRec region;
     BoxRec box;
@@ -415,27 +415,27 @@ undamage_box (qxl_screen_t *qxl, const struct qxl_rect *rect)
     box.x2 = rect->right;
     box.y2 = rect->bottom;
 
-    REGION_INIT (qxl->pScrn->pScreen, &region, &box, 0);
+    REGION_INIT (compat_qxl->pScrn->pScreen, &region, &box, 0);
 
-    REGION_SUBTRACT (qxl->pScrn->pScreen, &(qxl->pending_copy), &(qxl->pending_copy), &region);
+    REGION_SUBTRACT (compat_qxl->pScrn->pScreen, &(compat_qxl->pending_copy), &(compat_qxl->pending_copy), &region);
 
-    REGION_EMPTY (qxl->pScrn->pScreen, &(qxl->pending_copy));
+    REGION_EMPTY (compat_qxl->pScrn->pScreen, &(compat_qxl->pending_copy));
 }
 
 static void
-clear_pending_damage (qxl_screen_t *qxl)
+clear_pending_damage (compat_qxl_screen_t *compat_qxl)
 {
-    REGION_EMPTY (qxl->pScrn->pScreen, &(qxl->pending_copy));
+    REGION_EMPTY (compat_qxl->pScrn->pScreen, &(compat_qxl->pending_copy));
 }
 
 static void
-submit_fill (qxl_screen_t *qxl, const struct qxl_rect *rect, uint32_t color)
+submit_fill (compat_qxl_screen_t *compat_qxl, const struct compat_qxl_rect *rect, uint32_t color)
 {
-    struct qxl_drawable *drawable;
+    struct compat_qxl_drawable *drawable;
 
     CHECK_POINT();
     
-    drawable = make_drawable (qxl, QXL_DRAW_FILL, rect);
+    drawable = make_drawable (compat_qxl, QXL_DRAW_FILL, rect);
 
     CHECK_POINT();
 
@@ -447,13 +447,13 @@ submit_fill (qxl_screen_t *qxl, const struct qxl_rect *rect, uint32_t color)
     drawable->u.fill.mask.pos.y = 0;
     drawable->u.fill.mask.bitmap = 0;
 
-    push_drawable (qxl, drawable);
+    push_drawable (compat_qxl, drawable);
 
-    undamage_box (qxl, rect);
+    undamage_box (compat_qxl, rect);
 }
 
 static void
-translate_rect (struct qxl_rect *rect)
+translate_rect (struct compat_qxl_rect *rect)
 {
     rect->right -= rect->left;
     rect->bottom -= rect->top;
@@ -461,10 +461,10 @@ translate_rect (struct qxl_rect *rect)
 }
 
 static void
-submit_copy (qxl_screen_t *qxl, const struct qxl_rect *rect)
+submit_copy (compat_qxl_screen_t *compat_qxl, const struct compat_qxl_rect *rect)
 {
-    struct qxl_drawable *drawable;
-    ScrnInfoPtr pScrn = qxl->pScrn;
+    struct compat_qxl_drawable *drawable;
+    ScrnInfoPtr pScrn = compat_qxl->pScrn;
 
     if (rect->left == rect->right ||
 	rect->top == rect->bottom)
@@ -473,13 +473,13 @@ submit_copy (qxl_screen_t *qxl, const struct qxl_rect *rect)
 	return ;
     }
     
-    drawable = make_drawable (qxl, QXL_DRAW_COPY, rect);
+    drawable = make_drawable (compat_qxl, QXL_DRAW_COPY, rect);
 
     drawable->u.copy.src_bitmap = physical_address (
-	qxl, qxl_image_create (qxl, qxl->fb, rect->left, rect->top,
+	compat_qxl, compat_qxl_image_create (compat_qxl, compat_qxl->fb, rect->left, rect->top,
 			       rect->right - rect->left,
 			       rect->bottom - rect->top,
-			       pScrn->displayWidth * qxl->bytes_per_pixel));
+			       pScrn->displayWidth * compat_qxl->bytes_per_pixel));
     drawable->u.copy.src_area = *rect;
     translate_rect (&drawable->u.copy.src_area);
     drawable->u.copy.rop_descriptor = ROPD_OP_PUT;
@@ -489,7 +489,7 @@ submit_copy (qxl_screen_t *qxl, const struct qxl_rect *rect)
     drawable->u.copy.mask.pos.y = 0;
     drawable->u.copy.mask.bitmap = 0;
 
-    push_drawable (qxl, drawable);
+    push_drawable (compat_qxl, drawable);
 }
 
 static void
@@ -511,87 +511,87 @@ print_region (const char *header, RegionPtr pRegion)
 }
 
 static void
-accept_damage (qxl_screen_t *qxl)
+accept_damage (compat_qxl_screen_t *compat_qxl)
 {
-    REGION_UNION (qxl->pScrn->pScreen, &(qxl->to_be_sent), &(qxl->to_be_sent), 
-		  &(qxl->pending_copy));
+    REGION_UNION (compat_qxl->pScrn->pScreen, &(compat_qxl->to_be_sent), &(compat_qxl->to_be_sent), 
+		  &(compat_qxl->pending_copy));
 
-    REGION_EMPTY (qxl->pScrn->pScreen, &(qxl->pending_copy));
+    REGION_EMPTY (compat_qxl->pScrn->pScreen, &(compat_qxl->pending_copy));
 }
 
 static void
-qxl_send_copies (qxl_screen_t *qxl)
+compat_qxl_send_copies (compat_qxl_screen_t *compat_qxl)
 {
     BoxPtr pBox;
     int nbox;
 
-    nbox = REGION_NUM_RECTS (&qxl->to_be_sent);
-    pBox = REGION_RECTS (&qxl->to_be_sent);
+    nbox = REGION_NUM_RECTS (&compat_qxl->to_be_sent);
+    pBox = REGION_RECTS (&compat_qxl->to_be_sent);
 
-/*      if (REGION_NUM_RECTS (&qxl->to_be_sent) > 0)  */
-/*        	print_region ("send bits", &qxl->to_be_sent); */
+/*      if (REGION_NUM_RECTS (&compat_qxl->to_be_sent) > 0)  */
+/*        	print_region ("send bits", &compat_qxl->to_be_sent); */
     
     while (nbox--)
     {
-	struct qxl_rect qrect;
+	struct compat_qxl_rect qrect;
 
 	qrect.top = pBox->y1;
 	qrect.left = pBox->x1;
 	qrect.bottom = pBox->y2;
 	qrect.right = pBox->x2;
 	
-	submit_copy (qxl, &qrect);
+	submit_copy (compat_qxl, &qrect);
 
 	pBox++;
     }
 
-    REGION_EMPTY(qxl->pScrn->pScreen, &qxl->to_be_sent);
+    REGION_EMPTY(compat_qxl->pScrn->pScreen, &compat_qxl->to_be_sent);
 }
 
 static void
-paint_shadow (qxl_screen_t *qxl)
+paint_shadow (compat_qxl_screen_t *compat_qxl)
 {
-    struct qxl_rect qrect;
+    struct compat_qxl_rect qrect;
 
     qrect.top = 0;
     qrect.bottom = 1200;
     qrect.left = 0;
     qrect.right = 1600;
 
-    submit_copy (qxl, &qrect);
+    submit_copy (compat_qxl, &qrect);
 }
 
 static void
-qxl_sanity_check (qxl_screen_t *qxl)
+compat_qxl_sanity_check (compat_qxl_screen_t *compat_qxl)
 {
     /* read the mode back from the rom */
-    if (!qxl->rom || !qxl->pScrn)
+    if (!compat_qxl->rom || !compat_qxl->pScrn)
 	return;
 
-    if (qxl->rom->mode == ~0) 
+    if (compat_qxl->rom->mode == ~0) 
     {
  	ErrorF("QXL device jumped back to VGA mode - resetting mode\n");
- 	qxl_switch_mode(qxl->pScrn->scrnIndex, qxl->pScrn->currentMode, 0);
+ 	compat_qxl_switch_mode(compat_qxl->pScrn->scrnIndex, compat_qxl->pScrn->currentMode, 0);
     }
 }
 
 static void
-qxl_block_handler (pointer data, OSTimePtr pTimeout, pointer pRead)
+compat_qxl_block_handler (pointer data, OSTimePtr pTimeout, pointer pRead)
 {
-    qxl_screen_t *qxl = (qxl_screen_t *) data;
+    compat_qxl_screen_t *compat_qxl = (compat_qxl_screen_t *) data;
 
-    if (!qxl->pScrn->vtSema)
+    if (!compat_qxl->pScrn->vtSema)
         return;
 
-    qxl_sanity_check(qxl);
+    compat_qxl_sanity_check(compat_qxl);
 
-    accept_damage (qxl);
+    accept_damage (compat_qxl);
 
-    qxl_send_copies (qxl);
+    compat_qxl_send_copies (compat_qxl);
 }
 
 static void
-qxl_wakeup_handler (pointer data, int i, pointer LastSelectMask)
+compat_qxl_wakeup_handler (pointer data, int i, pointer LastSelectMask)
 {
 }
 
@@ -612,59 +612,59 @@ qxl_wakeup_handler (pointer data, int i, pointer LastSelectMask)
  * damage, that must first be unioned onto to_be_sent, and then the new
  * damage must be stored in pending_copy.
  * 
- * The qxl_screen_t struct contains two regions, "pending_copy" and 
+ * The compat_qxl_screen_t struct contains two regions, "pending_copy" and 
  * "to_be_sent". 
  *
  * Pending copy is 
  * 
  */
 static void
-qxl_on_damage (DamagePtr pDamage, RegionPtr pRegion, pointer closure)
+compat_qxl_on_damage (DamagePtr pDamage, RegionPtr pRegion, pointer closure)
 {
-    qxl_screen_t *qxl = closure;
+    compat_qxl_screen_t *compat_qxl = closure;
 
 /*     print_region ("damage", pRegion); */
     
 /*     print_region ("on_damage ", pRegion); */
 
-    accept_damage (qxl);
+    accept_damage (compat_qxl);
 
-/*     print_region ("accepting, qxl->to_be_sent is now", &qxl->to_be_sent); */
+/*     print_region ("accepting, compat_qxl->to_be_sent is now", &compat_qxl->to_be_sent); */
 
-    REGION_COPY (qxl->pScrn->pScreen, &(qxl->pending_copy), pRegion);
+    REGION_COPY (compat_qxl->pScrn->pScreen, &(compat_qxl->pending_copy), pRegion);
 }
 
 
 static Bool
-qxl_create_screen_resources(ScreenPtr pScreen)
+compat_qxl_create_screen_resources(ScreenPtr pScreen)
 {
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
     Bool ret;
     PixmapPtr pPixmap;
 
-    pScreen->CreateScreenResources = qxl->create_screen_resources;
+    pScreen->CreateScreenResources = compat_qxl->create_screen_resources;
     ret = pScreen->CreateScreenResources (pScreen);
-    pScreen->CreateScreenResources = qxl_create_screen_resources;
+    pScreen->CreateScreenResources = compat_qxl_create_screen_resources;
 
     if (!ret)
 	return FALSE;
 
-    qxl->damage = DamageCreate (qxl_on_damage, NULL,
+    compat_qxl->damage = DamageCreate (compat_qxl_on_damage, NULL,
 			        DamageReportRawRegion,
-				TRUE, pScreen, qxl);
+				TRUE, pScreen, compat_qxl);
 
 
     pPixmap = pScreen->GetScreenPixmap(pScreen);
 
-    if (!RegisterBlockAndWakeupHandlers(qxl_block_handler, qxl_wakeup_handler, qxl))
+    if (!RegisterBlockAndWakeupHandlers(compat_qxl_block_handler, compat_qxl_wakeup_handler, compat_qxl))
 	return FALSE;
 
-    REGION_INIT (pScreen, &(qxl->pending_copy), NullBox, 0);
+    REGION_INIT (pScreen, &(compat_qxl->pending_copy), NullBox, 0);
 
-    REGION_INIT (pScreen, &(qxl->to_be_sent), NullBox, 0);
+    REGION_INIT (pScreen, &(compat_qxl->to_be_sent), NullBox, 0);
  
-    DamageRegister (&pPixmap->drawable, qxl->damage);
+    DamageRegister (&pPixmap->drawable, compat_qxl->damage);
     return TRUE;
 }
 
@@ -686,13 +686,13 @@ get_window_pixmap (DrawablePtr pDrawable, int *xoff, int *yoff)
 }
 
 static void
-qxl_poly_fill_rect (DrawablePtr pDrawable,
+compat_qxl_poly_fill_rect (DrawablePtr pDrawable,
 		 GCPtr	     pGC,
 		 int	     nrect,
 		 xRectangle *prect)
 {
     ScrnInfoPtr pScrn = xf86Screens[pDrawable->pScreen->myNum];
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
     PixmapPtr pPixmap;
     int xoff, yoff;
 
@@ -714,14 +714,14 @@ qxl_poly_fill_rect (DrawablePtr pDrawable,
 
 	while (nbox--)
 	{
-	    struct qxl_rect qrect;
+	    struct compat_qxl_rect qrect;
 
 	    qrect.left = pBox->x1;
 	    qrect.right = pBox->x2;
 	    qrect.top = pBox->y1;
 	    qrect.bottom = pBox->y2;
 
-	    submit_fill (qxl, &qrect, pGC->fgPixel);
+	    submit_fill (compat_qxl, &qrect, pGC->fgPixel);
 
 	    pBox++;
 	}
@@ -733,7 +733,7 @@ qxl_poly_fill_rect (DrawablePtr pDrawable,
 }
 
 static void
-qxl_copy_n_to_n (DrawablePtr    pSrcDrawable,
+compat_qxl_copy_n_to_n (DrawablePtr    pSrcDrawable,
 		 DrawablePtr    pDstDrawable,
 		 GCPtr	        pGC,
 		 BoxPtr	        pbox,
@@ -747,7 +747,7 @@ qxl_copy_n_to_n (DrawablePtr    pSrcDrawable,
 {
     ScreenPtr pScreen = pSrcDrawable->pScreen;
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
     int src_xoff, src_yoff;
     int dst_xoff, dst_yoff;
     PixmapPtr pSrcPixmap, pDstPixmap;
@@ -776,7 +776,7 @@ qxl_copy_n_to_n (DrawablePtr    pSrcDrawable,
 	if (n)
 	{
 /* 	    ErrorF ("Clearing pending damage\n"); */
-	    clear_pending_damage (qxl);
+	    clear_pending_damage (compat_qxl);
 	    
 	    /* We have to do this because the copy will cause the damage
 	     * to be sent to move.
@@ -786,13 +786,13 @@ qxl_copy_n_to_n (DrawablePtr    pSrcDrawable,
 	     * complex, and the performance win is unlikely to be
 	     * very big.
 	     */
-	    qxl_send_copies (qxl);
+	    compat_qxl_send_copies (compat_qxl);
 	}
     
 	while (n--)
 	{
-	    struct qxl_drawable *drawable;
-	    struct qxl_rect qrect;
+	    struct compat_qxl_drawable *drawable;
+	    struct compat_qxl_rect qrect;
 	    
 	    qrect.top = b->y1;
 	    qrect.bottom = b->y2;
@@ -803,19 +803,19 @@ qxl_copy_n_to_n (DrawablePtr    pSrcDrawable,
 /* 		    b->x1, b->y1, b->x2, b->y2, */
 /* 		    dx, dy, dst_xoff, dst_yoff); */
 	    
-	    drawable = make_drawable (qxl, QXL_COPY_BITS, &qrect);
+	    drawable = make_drawable (compat_qxl, QXL_COPY_BITS, &qrect);
 	    drawable->u.copy_bits.src_pos.x = b->x1 + dx;
 	    drawable->u.copy_bits.src_pos.y = b->y1 + dy;
 
-	    push_drawable (qxl, drawable);
+	    push_drawable (compat_qxl, drawable);
 
 #if 0
 	    if (closure)
-		qxl_usleep (1000000);
+		compat_qxl_usleep (1000000);
 #endif
 	    
 #if 0
-	    submit_fill (qxl, &qrect, rand());
+	    submit_fill (compat_qxl, &qrect, rand());
 #endif
 
 	    b++;
@@ -828,7 +828,7 @@ qxl_copy_n_to_n (DrawablePtr    pSrcDrawable,
 }
 
 static RegionPtr
-qxl_copy_area(DrawablePtr pSrcDrawable, DrawablePtr pDstDrawable, GCPtr pGC,
+compat_qxl_copy_area(DrawablePtr pSrcDrawable, DrawablePtr pDstDrawable, GCPtr pGC,
 	    int srcx, int srcy, int width, int height, int dstx, int dsty)
 {
     if (pSrcDrawable->type == DRAWABLE_WINDOW &&
@@ -841,7 +841,7 @@ qxl_copy_area(DrawablePtr pSrcDrawable, DrawablePtr pDstDrawable, GCPtr pGC,
 
 	res = fbDoCopy (pSrcDrawable, pDstDrawable, pGC,
 			srcx, srcy, width, height, dstx, dsty,
-			qxl_copy_n_to_n, 0, NULL);
+			compat_qxl_copy_n_to_n, 0, NULL);
 
 	return res;
     }
@@ -856,11 +856,11 @@ qxl_copy_area(DrawablePtr pSrcDrawable, DrawablePtr pDstDrawable, GCPtr pGC,
 }
 
 static void
-qxl_fill_region_solid (DrawablePtr pDrawable, RegionPtr pRegion, Pixel pixel)
+compat_qxl_fill_region_solid (DrawablePtr pDrawable, RegionPtr pRegion, Pixel pixel)
 {
     ScreenPtr pScreen = pDrawable->pScreen;
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
     PixmapPtr pPixmap;
     int xoff, yoff;
 
@@ -871,14 +871,14 @@ qxl_fill_region_solid (DrawablePtr pDrawable, RegionPtr pRegion, Pixel pixel)
 
 	while (nbox--)
 	{
-	    struct qxl_rect qrect;
+	    struct compat_qxl_rect qrect;
 
 	    qrect.left = pBox->x1;
 	    qrect.right = pBox->x2;
 	    qrect.top = pBox->y1;
 	    qrect.bottom = pBox->y2;
 
-	    submit_fill (qxl, &qrect, pixel);
+	    submit_fill (compat_qxl, &qrect, pixel);
 
 	    pBox++;
 	}
@@ -889,7 +889,7 @@ qxl_fill_region_solid (DrawablePtr pDrawable, RegionPtr pRegion, Pixel pixel)
 }
 
 static void
-qxl_copy_window (WindowPtr pWin, DDXPointRec ptOldOrg, RegionPtr prgnSrc)
+compat_qxl_copy_window (WindowPtr pWin, DDXPointRec ptOldOrg, RegionPtr prgnSrc)
 {
     RegionRec rgnDst;
     int dx, dy;
@@ -905,7 +905,7 @@ qxl_copy_window (WindowPtr pWin, DDXPointRec ptOldOrg, RegionPtr prgnSrc)
 
     fbCopyRegion (&pWin->drawable, &pWin->drawable,
 		  NULL, 
-		  &rgnDst, dx, dy, qxl_copy_n_to_n, 0, NULL);
+		  &rgnDst, dx, dy, compat_qxl_copy_n_to_n, 0, NULL);
 
     REGION_UNINIT (pScreen, &rgnDst);
 
@@ -915,7 +915,7 @@ qxl_copy_window (WindowPtr pWin, DDXPointRec ptOldOrg, RegionPtr prgnSrc)
 }
 
 static int
-qxl_create_gc (GCPtr pGC)
+compat_qxl_create_gc (GCPtr pGC)
 {
     static GCOps ops;
     static int initialized;
@@ -926,8 +926,8 @@ qxl_create_gc (GCPtr pGC)
     if (!initialized)
     {
 	ops = *pGC->ops;
-	ops.PolyFillRect = qxl_poly_fill_rect;
-	ops.CopyArea = qxl_copy_area;
+	ops.PolyFillRect = compat_qxl_poly_fill_rect;
+	ops.CopyArea = compat_qxl_copy_area;
 
 	initialized = TRUE;
     }
@@ -937,26 +937,26 @@ qxl_create_gc (GCPtr pGC)
 }
 
 static Bool
-qxl_screen_init(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
+compat_qxl_screen_init(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 {
     ScrnInfoPtr pScrn = xf86Screens[scrnIndex];
-    qxl_screen_t *qxl = pScrn->driverPrivate;
-    struct qxl_rom *rom;
-    struct qxl_ram_header *ram_header;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
+    struct compat_qxl_rom *rom;
+    struct compat_qxl_ram_header *ram_header;
     VisualPtr visual;
 
     CHECK_POINT();
 
-    qxl->pScrn = pScrn;
+    compat_qxl->pScrn = pScrn;
     
-    if (!qxl_map_memory(qxl, scrnIndex))
+    if (!compat_qxl_map_memory(compat_qxl, scrnIndex))
 	return FALSE;
 
-    rom = qxl->rom;
-    ram_header = (void *)((unsigned long)qxl->ram + (unsigned long)qxl->rom->ram_header_offset);
+    rom = compat_qxl->rom;
+    ram_header = (void *)((unsigned long)compat_qxl->ram + (unsigned long)compat_qxl->rom->ram_header_offset);
 
-    qxl_save_state(pScrn);
-    qxl_blank_screen(pScreen, SCREEN_SAVER_ON);
+    compat_qxl_save_state(pScrn);
+    compat_qxl_blank_screen(pScreen, SCREEN_SAVER_ON);
     
     miClearVisualTypes();
     if (!miSetVisualTypes(pScrn->depth, miGetDefaultVisualMask(pScrn->depth),
@@ -968,14 +968,14 @@ qxl_screen_init(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
     /* Note we do this before setting pScrn->virtualY to match our current
        mode, so as to allocate a buffer large enough for the largest mode.
        FIXME: add support for resizing the framebuffer on modeset. */
-    qxl->fb = xcalloc(pScrn->virtualY * pScrn->displayWidth, 4);
-    if (!qxl->fb)
+    compat_qxl->fb = xcalloc(pScrn->virtualY * pScrn->displayWidth, 4);
+    if (!compat_qxl->fb)
 	goto out;
 
     pScrn->virtualX = pScrn->currentMode->HDisplay;
     pScrn->virtualY = pScrn->currentMode->VDisplay;
     
-    if (!fbScreenInit(pScreen, qxl->fb,
+    if (!fbScreenInit(pScreen, compat_qxl->fb,
 		      pScrn->currentMode->HDisplay,
 		      pScrn->currentMode->VDisplay,
 		      pScrn->xDpi, pScrn->yDpi, pScrn->displayWidth,
@@ -1001,59 +1001,59 @@ qxl_screen_init(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
     
     fbPictureInit(pScreen, 0, 0);
 
-    qxl->create_screen_resources = pScreen->CreateScreenResources;
-    pScreen->CreateScreenResources = qxl_create_screen_resources;
+    compat_qxl->create_screen_resources = pScreen->CreateScreenResources;
+    pScreen->CreateScreenResources = compat_qxl_create_screen_resources;
 
     /* Set up resources */
-    qxl->mem = qxl_mem_create ((void *)((unsigned long)qxl->ram + (unsigned long)rom->pages_offset),
+    compat_qxl->mem = compat_qxl_mem_create ((void *)((unsigned long)compat_qxl->ram + (unsigned long)rom->pages_offset),
 			       rom->num_io_pages * getpagesize());
-    qxl->io_pages = (void *)((unsigned long)qxl->ram + (unsigned long)rom->pages_offset);
-    qxl->io_pages_physical = (void *)((unsigned long)qxl->ram_physical + (unsigned long)rom->pages_offset);
+    compat_qxl->io_pages = (void *)((unsigned long)compat_qxl->ram + (unsigned long)rom->pages_offset);
+    compat_qxl->io_pages_physical = (void *)((unsigned long)compat_qxl->ram_physical + (unsigned long)rom->pages_offset);
 
-    qxl->command_ring = qxl_ring_create (&(ram_header->cmd_ring_hdr),
-					 sizeof (struct qxl_command),
-					 32, qxl->io_base + QXL_IO_NOTIFY_CMD);
-    qxl->cursor_ring = qxl_ring_create (&(ram_header->cursor_ring_hdr),
-					sizeof (struct qxl_command),
-					32, qxl->io_base + QXL_IO_NOTIFY_CURSOR);
-    qxl->release_ring = qxl_ring_create (&(ram_header->release_ring_hdr),
+    compat_qxl->command_ring = compat_qxl_ring_create (&(ram_header->cmd_ring_hdr),
+					 sizeof (struct compat_qxl_command),
+					 32, compat_qxl->io_base + QXL_IO_NOTIFY_CMD);
+    compat_qxl->cursor_ring = compat_qxl_ring_create (&(ram_header->cursor_ring_hdr),
+					sizeof (struct compat_qxl_command),
+					32, compat_qxl->io_base + QXL_IO_NOTIFY_CURSOR);
+    compat_qxl->release_ring = compat_qxl_ring_create (&(ram_header->release_ring_hdr),
 					 sizeof (uint64_t),
 					 8, 0);
 					 
     /* xf86DPMSInit(pScreen, xf86DPMSSet, 0); */
 
 #if 0 /* XV accel */
-    qxlInitVideo(pScreen);
+    compat_qxlInitVideo(pScreen);
 #endif
 
-    pScreen->SaveScreen = qxl_blank_screen;
-    qxl->close_screen = pScreen->CloseScreen;
-    pScreen->CloseScreen = qxl_close_screen;
+    pScreen->SaveScreen = compat_qxl_blank_screen;
+    compat_qxl->close_screen = pScreen->CloseScreen;
+    pScreen->CloseScreen = compat_qxl_close_screen;
 
-    qxl->create_gc = pScreen->CreateGC;
-    pScreen->CreateGC = qxl_create_gc;
+    compat_qxl->create_gc = pScreen->CreateGC;
+    pScreen->CreateGC = compat_qxl_create_gc;
 
 #if 0
-    qxl->paint_window_background = pScreen->PaintWindowBackground;
-    qxl->paint_window_border = pScreen->PaintWindowBorder;
+    compat_qxl->paint_window_background = pScreen->PaintWindowBackground;
+    compat_qxl->paint_window_border = pScreen->PaintWindowBorder;
 #endif
-    qxl->copy_window = pScreen->CopyWindow;
+    compat_qxl->copy_window = pScreen->CopyWindow;
 #if 0
-    pScreen->PaintWindowBackground = qxl_paint_window;
-    pScreen->PaintWindowBorder = qxl_paint_window;
+    pScreen->PaintWindowBackground = compat_qxl_paint_window;
+    pScreen->PaintWindowBorder = compat_qxl_paint_window;
 #endif
-    pScreen->CopyWindow = qxl_copy_window;
+    pScreen->CopyWindow = compat_qxl_copy_window;
 
     miDCInitialize(pScreen, xf86GetPointerScreenFuncs());
 
     if (!miCreateDefColormap(pScreen))
 	goto out;
 
-    qxl_cursor_init (pScreen);
+    compat_qxl_cursor_init (pScreen);
     
     CHECK_POINT();
 
-    qxl_switch_mode(scrnIndex, pScrn->currentMode, 0);
+    compat_qxl_switch_mode(scrnIndex, pScrn->currentMode, 0);
 
     CHECK_POINT();
     
@@ -1064,26 +1064,26 @@ out:
 }
 
 static Bool
-qxl_enter_vt(int scrnIndex, int flags)
+compat_qxl_enter_vt(int scrnIndex, int flags)
 {
     ScrnInfoPtr pScrn = xf86Screens[scrnIndex];
 
-    qxl_save_state(pScrn);
-    qxl_switch_mode(scrnIndex, pScrn->currentMode, 0);
+    compat_qxl_save_state(pScrn);
+    compat_qxl_switch_mode(scrnIndex, pScrn->currentMode, 0);
 
     return TRUE;
 }
 
 static void
-qxl_leave_vt(int scrnIndex, int flags)
+compat_qxl_leave_vt(int scrnIndex, int flags)
 {
     ScrnInfoPtr pScrn = xf86Screens[scrnIndex];
 
-    qxl_restore_state(pScrn);
+    compat_qxl_restore_state(pScrn);
 }
 
 static Bool
-qxl_color_setup(ScrnInfoPtr pScrn)
+compat_qxl_color_setup(ScrnInfoPtr pScrn)
 {
     int scrnIndex = pScrn->scrnIndex;
     Gamma gzeros = { 0.0, 0.0, 0.0 };
@@ -1113,13 +1113,13 @@ qxl_color_setup(ScrnInfoPtr pScrn)
 }
 
 static void
-print_modes (qxl_screen_t *qxl, int scrnIndex)
+print_modes (compat_qxl_screen_t *compat_qxl, int scrnIndex)
 {
     int i;
 
-    for (i = 0; i < qxl->num_modes; ++i)
+    for (i = 0; i < compat_qxl->num_modes; ++i)
     {
-	struct qxl_mode *m = qxl->modes + i;
+	struct compat_qxl_mode *m = compat_qxl->modes + i;
 
 	xf86DrvMsg (scrnIndex, X_INFO,
 		    "%d: %dx%d, %d bits, stride %d, %dmm x %dmm, orientation %d\n",
@@ -1129,11 +1129,11 @@ print_modes (qxl_screen_t *qxl, int scrnIndex)
 }
 
 static Bool
-qxl_check_device(ScrnInfoPtr pScrn, qxl_screen_t *qxl)
+compat_qxl_check_device(ScrnInfoPtr pScrn, compat_qxl_screen_t *compat_qxl)
 {
     int scrnIndex = pScrn->scrnIndex;
-    struct qxl_rom *rom = qxl->rom;
-    struct qxl_ram_header *ram_header = (void *)((unsigned long)qxl->ram + rom->ram_header_offset);
+    struct compat_qxl_rom *rom = compat_qxl->rom;
+    struct compat_qxl_ram_header *ram_header = (void *)((unsigned long)compat_qxl->ram + rom->ram_header_offset);
 
     CHECK_POINT();
     
@@ -1170,24 +1170,24 @@ qxl_check_device(ScrnInfoPtr pScrn, qxl_screen_t *qxl)
     xf86DrvMsg(scrnIndex, X_INFO, "Correct RAM signature %x\n", 
 	       ram_header->magic);
 
-    qxl->draw_area_offset = rom->draw_area_offset;
-    qxl->draw_area_size = rom->draw_area_size;
+    compat_qxl->draw_area_offset = rom->draw_area_offset;
+    compat_qxl->draw_area_size = rom->draw_area_size;
     pScrn->videoRam = rom->draw_area_size / 1024;
     
     return TRUE;
 }
 
 static int
-qxl_find_native_mode(ScrnInfoPtr pScrn, DisplayModePtr p)
+compat_qxl_find_native_mode(ScrnInfoPtr pScrn, DisplayModePtr p)
 {
     int i;
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
 
     CHECK_POINT();
     
-    for (i = 0; i < qxl->num_modes; i++) 
+    for (i = 0; i < compat_qxl->num_modes; i++) 
     {
-	struct qxl_mode *m = qxl->modes + i;
+	struct compat_qxl_mode *m = compat_qxl->modes + i;
 
 	if (m->x_res == p->HDisplay &&
 	    m->y_res == p->VDisplay &&
@@ -1212,20 +1212,20 @@ qxl_find_native_mode(ScrnInfoPtr pScrn, DisplayModePtr p)
 }
 
 static ModeStatus
-qxl_valid_mode(int scrn, DisplayModePtr p, Bool flag, int pass)
+compat_qxl_valid_mode(int scrn, DisplayModePtr p, Bool flag, int pass)
 {
     ScrnInfoPtr pScrn = xf86Screens[scrn];
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
     int bpp = pScrn->bitsPerPixel;
     int mode_idx;
 
     /* FIXME: I don't think this is necessary now that we report the
      * correct amount of video ram?
      */
-    if (p->HDisplay * p->VDisplay * (bpp/8) > qxl->draw_area_size)
+    if (p->HDisplay * p->VDisplay * (bpp/8) > compat_qxl->draw_area_size)
 	return MODE_MEM;
 
-    mode_idx = qxl_find_native_mode (pScrn, p);
+    mode_idx = compat_qxl_find_native_mode (pScrn, p);
     if (mode_idx == -1)
 	return MODE_NOMODE;
 
@@ -1234,7 +1234,7 @@ qxl_valid_mode(int scrn, DisplayModePtr p, Bool flag, int pass)
     return MODE_OK;
 }
 
-static void qxl_add_mode(ScrnInfoPtr pScrn, int width, int height, int type)
+static void compat_qxl_add_mode(ScrnInfoPtr pScrn, int width, int height, int type)
 {
     DisplayModePtr mode;
 
@@ -1263,10 +1263,10 @@ static void qxl_add_mode(ScrnInfoPtr pScrn, int width, int height, int type)
 }
 
 static Bool
-qxl_pre_init(ScrnInfoPtr pScrn, int flags)
+compat_qxl_pre_init(ScrnInfoPtr pScrn, int flags)
 {
     int i, scrnIndex = pScrn->scrnIndex;
-    qxl_screen_t *qxl = NULL;
+    compat_qxl_screen_t *compat_qxl = NULL;
     ClockRangePtr clockRanges = NULL;
     int *linePitches = NULL;
     DisplayModePtr mode;
@@ -1281,27 +1281,27 @@ qxl_pre_init(ScrnInfoPtr pScrn, int flags)
     }
 
     if (!pScrn->driverPrivate)
-	pScrn->driverPrivate = xnfcalloc(sizeof(qxl_screen_t), 1);
-    qxl = pScrn->driverPrivate;
+	pScrn->driverPrivate = xnfcalloc(sizeof(compat_qxl_screen_t), 1);
+    compat_qxl = pScrn->driverPrivate;
     
-    qxl->entity = xf86GetEntityInfo(pScrn->entityList[0]);
-    qxl->pci = xf86GetPciInfoForEntity(qxl->entity->index);
+    compat_qxl->entity = xf86GetEntityInfo(pScrn->entityList[0]);
+    compat_qxl->pci = xf86GetPciInfoForEntity(compat_qxl->entity->index);
 #ifndef XSERVER_LIBPCIACCESS
-    qxl->pci_tag = pciTag(qxl->pci->bus, qxl->pci->device, qxl->pci->func);
+    compat_qxl->pci_tag = pciTag(compat_qxl->pci->bus, compat_qxl->pci->device, compat_qxl->pci->func);
 #endif
 
     pScrn->monitor = pScrn->confScreen->monitor;
 
-    if (!qxl_color_setup(pScrn))
+    if (!compat_qxl_color_setup(pScrn))
 	goto out;
 
     /* option parsing and card differentiation */
     xf86CollectOptions(pScrn, NULL);
     
-    if (!qxl_map_memory(qxl, scrnIndex))
+    if (!compat_qxl_map_memory(compat_qxl, scrnIndex))
 	goto out;
 
-    if (!qxl_check_device(pScrn, qxl))
+    if (!compat_qxl_check_device(pScrn, compat_qxl))
 	goto out;
 
     /* ddc stuff here */
@@ -1328,22 +1328,22 @@ qxl_pre_init(ScrnInfoPtr pScrn, int flags)
     }
 
     /* Add any modes not in xorg's default mode list */
-    for (i = 0; i < qxl->num_modes; i++)
-        if (qxl->modes[i].orientation == 0) {
-            qxl_add_mode(pScrn, qxl->modes[i].x_res, qxl->modes[i].y_res,
+    for (i = 0; i < compat_qxl->num_modes; i++)
+        if (compat_qxl->modes[i].orientation == 0) {
+            compat_qxl_add_mode(pScrn, compat_qxl->modes[i].x_res, compat_qxl->modes[i].y_res,
                          M_T_DRIVER);
-            if (qxl->modes[i].x_res > max_x)
-                max_x = qxl->modes[i].x_res;
-            if (qxl->modes[i].y_res > max_y)
-                max_y = qxl->modes[i].y_res;
+            if (compat_qxl->modes[i].x_res > max_x)
+                max_x = compat_qxl->modes[i].x_res;
+            if (compat_qxl->modes[i].y_res > max_y)
+                max_y = compat_qxl->modes[i].y_res;
         }
 
     if (pScrn->display->virtualX == 0 && pScrn->display->virtualY == 0) {
         /* It is possible for the largest x + largest y size combined leading
            to a virtual size which will not fit into the framebuffer when this
            happens we prefer max width and make height as large as possible */
-        if (max_x * max_y * (pScrn->bitsPerPixel / 8) > qxl->draw_area_size)
-            pScrn->display->virtualY = qxl->draw_area_size /
+        if (max_x * max_y * (pScrn->bitsPerPixel / 8) > compat_qxl->draw_area_size)
+            pScrn->display->virtualY = compat_qxl->draw_area_size /
                                        (max_x * (pScrn->bitsPerPixel / 8));
         else
             pScrn->display->virtualY = max_y;
@@ -1381,14 +1381,14 @@ qxl_pre_init(ScrnInfoPtr pScrn, int flags)
 	goto out;
     }
 
-    print_modes (qxl, scrnIndex);
+    print_modes (compat_qxl, scrnIndex);
 
     /* VGA hardware initialisation */
     if (!vgaHWGetHWRec(pScrn))
         return FALSE;
 
     /* hate */
-    qxl_unmap_memory(qxl, scrnIndex);
+    compat_qxl_unmap_memory(compat_qxl, scrnIndex);
 
     CHECK_POINT();
     
@@ -1398,19 +1398,19 @@ qxl_pre_init(ScrnInfoPtr pScrn, int flags)
 out:
     if (clockRanges)
 	xfree(clockRanges);
-    if (qxl)
-	xfree(qxl);
+    if (compat_qxl)
+	xfree(compat_qxl);
 
     return FALSE;
 }
 
 #ifdef XSERVER_LIBPCIACCESS
-enum qxl_class
+enum compat_qxl_class
 {
     CHIP_QXL_1,
 };
 
-static const struct pci_id_match qxl_device_match[] = {
+static const struct pci_id_match compat_qxl_device_match[] = {
     {
 	PCI_VENDOR_RED_HAT, PCI_CHIP_QXL_0100, PCI_MATCH_ANY, PCI_MATCH_ANY,
 	0x00030000, 0x00ffffff, CHIP_QXL_1
@@ -1420,14 +1420,14 @@ static const struct pci_id_match qxl_device_match[] = {
 };
 #endif
 
-static SymTabRec qxlChips[] =
+static SymTabRec compat_qxlChips[] =
 {
     { PCI_CHIP_QXL_0100,	"QXL 1", },
     { -1, NULL }
 };
 
 #ifndef XSERVER_LIBPCIACCESS
-static PciChipsets qxlPciChips[] =
+static PciChipsets compat_qxlPciChips[] =
 {
     { PCI_CHIP_QXL_0100,    PCI_CHIP_QXL_0100,	RES_SHARED_VGA },
     { -1, -1, RES_UNDEFINED }
@@ -1435,20 +1435,20 @@ static PciChipsets qxlPciChips[] =
 #endif
 
 static void
-qxl_identify(int flags)
+compat_qxl_identify(int flags)
 {
-    xf86PrintChipsets("qxl", "Driver for QXL virtual graphics", qxlChips);
+    xf86PrintChipsets("compat_qxl", "Driver for QXL virtual graphics", compat_qxlChips);
 }
 
-static void
-qxl_init_scrn(ScrnInfoPtr pScrn)
+void
+compat_init_scrn(ScrnInfoPtr pScrn)
 {
     pScrn->driverVersion    = 0;
-    pScrn->driverName	    = pScrn->name = "qxl";
-    pScrn->PreInit	    = qxl_pre_init;
-    pScrn->ScreenInit	    = qxl_screen_init;
-    pScrn->SwitchMode	    = qxl_switch_mode;
-    pScrn->ValidMode	    = qxl_valid_mode;
-    pScrn->EnterVT	    = qxl_enter_vt;
-    pScrn->LeaveVT	    = qxl_leave_vt;
+    pScrn->driverName	    = pScrn->name = "compat_qxl";
+    pScrn->PreInit	    = compat_qxl_pre_init;
+    pScrn->ScreenInit	    = compat_qxl_screen_init;
+    pScrn->SwitchMode	    = compat_qxl_switch_mode;
+    pScrn->ValidMode	    = compat_qxl_valid_mode;
+    pScrn->EnterVT	    = compat_qxl_enter_vt;
+    pScrn->LeaveVT	    = compat_qxl_leave_vt;
 }

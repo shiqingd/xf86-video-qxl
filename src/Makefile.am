@@ -33,7 +33,7 @@ qxl_drv_la_LTLIBRARIES = qxl_drv.la
 qxl_drv_la_LDFLAGS = -module -avoid-version
 qxl_drv_ladir = @moduledir@/drivers
 
-qxl_drv_la_LIBADD = uxa/libuxa.la
+qxl_drv_la_LIBADD = uxa/libuxa.la compat/compatdriver.la
 
 qxl_drv_la_SOURCES =				\
 	qxl.h					\

@@ -25,25 +25,25 @@
 #include <cursorstr.h>
 
 static void
-push_cursor (qxl_screen_t *qxl, struct qxl_cursor_cmd *cursor)
+push_cursor (compat_qxl_screen_t *compat_qxl, struct compat_qxl_cursor_cmd *cursor)
 {
-    struct qxl_command cmd;
+    struct compat_qxl_command cmd;
 
-    /* See comment on push_command() in qxl_driver.c */
-    if (qxl->rom->mode != ~0)
+    /* See comment on push_command() in compat_qxl_driver.c */
+    if (compat_qxl->rom->mode != ~0)
     {
         cmd.type = QXL_CMD_CURSOR;
-        cmd.data = physical_address (qxl, cursor);
+        cmd.data = physical_address (compat_qxl, cursor);
       
-        qxl_ring_push (qxl->cursor_ring, &cmd);
+        compat_qxl_ring_push (compat_qxl->cursor_ring, &cmd);
     }
 }
 
-static struct qxl_cursor_cmd *
-qxl_alloc_cursor_cmd(qxl_screen_t *qxl)
+static struct compat_qxl_cursor_cmd *
+compat_qxl_alloc_cursor_cmd(compat_qxl_screen_t *compat_qxl)
 {
-    struct qxl_cursor_cmd *cmd =
-	qxl_allocnf (qxl, sizeof(struct qxl_cursor_cmd));
+    struct compat_qxl_cursor_cmd *cmd =
+	compat_qxl_allocnf (compat_qxl, sizeof(struct compat_qxl_cursor_cmd));
 
     cmd->release_info.id = pointer_to_u64 (cmd) | 1;
     
@@ -51,43 +51,43 @@ qxl_alloc_cursor_cmd(qxl_screen_t *qxl)
 }
 
 static void
-qxl_set_cursor_position(ScrnInfoPtr pScrn, int x, int y)
+compat_qxl_set_cursor_position(ScrnInfoPtr pScrn, int x, int y)
 {
-    qxl_screen_t *qxl = pScrn->driverPrivate;
-    struct qxl_cursor_cmd *cmd = qxl_alloc_cursor_cmd(qxl);
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
+    struct compat_qxl_cursor_cmd *cmd = compat_qxl_alloc_cursor_cmd(compat_qxl);
 
-    qxl->cur_x = x;
-    qxl->cur_y = y;
+    compat_qxl->cur_x = x;
+    compat_qxl->cur_y = y;
     
     cmd->type = QXL_CURSOR_MOVE;
-    cmd->u.position.x = qxl->cur_x + qxl->hot_x;
-    cmd->u.position.y = qxl->cur_y + qxl->hot_y;
+    cmd->u.position.x = compat_qxl->cur_x + compat_qxl->hot_x;
+    cmd->u.position.y = compat_qxl->cur_y + compat_qxl->hot_y;
 
-    push_cursor(qxl, cmd);
+    push_cursor(compat_qxl, cmd);
 }
 
 static void
-qxl_load_cursor_image(ScrnInfoPtr pScrn, unsigned char *bits)
+compat_qxl_load_cursor_image(ScrnInfoPtr pScrn, unsigned char *bits)
 {
 }
 
 static void
-qxl_set_cursor_colors(ScrnInfoPtr pScrn, int bg, int fg)
+compat_qxl_set_cursor_colors(ScrnInfoPtr pScrn, int bg, int fg)
 {
     /* Should not be called since UseHWCursor returned FALSE */
 }
 
 static void
-qxl_load_cursor_argb (ScrnInfoPtr pScrn, CursorPtr pCurs)
+compat_qxl_load_cursor_argb (ScrnInfoPtr pScrn, CursorPtr pCurs)
 {
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
     int w = pCurs->bits->width;
     int h = pCurs->bits->height;
     int size = w * h * sizeof (CARD32);
 
-    struct qxl_cursor_cmd *cmd = qxl_alloc_cursor_cmd (qxl);
-    struct qxl_cursor *cursor =
-	qxl_allocnf(qxl, sizeof(struct qxl_cursor) + size);
+    struct compat_qxl_cursor_cmd *cmd = compat_qxl_alloc_cursor_cmd (compat_qxl);
+    struct compat_qxl_cursor *cursor =
+	compat_qxl_allocnf(compat_qxl, sizeof(struct compat_qxl_cursor) + size);
 
     cursor->header.unique = 0;
     cursor->header.type = CURSOR_TYPE_ALPHA;
@@ -121,20 +121,20 @@ qxl_load_cursor_argb (ScrnInfoPtr pScrn, CursorPtr pCurs)
     }
 #endif
 
-    qxl->hot_x = pCurs->bits->xhot;
-    qxl->hot_y = pCurs->bits->yhot;
+    compat_qxl->hot_x = pCurs->bits->xhot;
+    compat_qxl->hot_y = pCurs->bits->yhot;
     
     cmd->type = QXL_CURSOR_SET;
-    cmd->u.set.position.x = qxl->cur_x + qxl->hot_x;
-    cmd->u.set.position.y = qxl->cur_y + qxl->hot_y;
-    cmd->u.set.shape = physical_address (qxl, cursor);
+    cmd->u.set.position.x = compat_qxl->cur_x + compat_qxl->hot_x;
+    cmd->u.set.position.y = compat_qxl->cur_y + compat_qxl->hot_y;
+    cmd->u.set.shape = physical_address (compat_qxl, cursor);
     cmd->u.set.visible = TRUE;
 
-    push_cursor(qxl, cmd);
+    push_cursor(compat_qxl, cmd);
 }    
 
 static Bool
-qxl_use_hw_cursor (ScreenPtr pScrn, CursorPtr pCurs)
+compat_qxl_use_hw_cursor (ScreenPtr pScrn, CursorPtr pCurs)
 {
     /* Old-school bitmap cursors are not
      * hardware accelerated for now.
@@ -143,36 +143,36 @@ qxl_use_hw_cursor (ScreenPtr pScrn, CursorPtr pCurs)
 }
 
 static Bool
-qxl_use_hw_cursorARGB (ScreenPtr pScrn, CursorPtr pCurs)
+compat_qxl_use_hw_cursorARGB (ScreenPtr pScrn, CursorPtr pCurs)
 {
     return TRUE;
 }
 
 static void
-qxl_hide_cursor(ScrnInfoPtr pScrn)
+compat_qxl_hide_cursor(ScrnInfoPtr pScrn)
 {
-    qxl_screen_t *qxl = pScrn->driverPrivate;
-    struct qxl_cursor_cmd *cursor = qxl_alloc_cursor_cmd(qxl);
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
+    struct compat_qxl_cursor_cmd *cursor = compat_qxl_alloc_cursor_cmd(compat_qxl);
 
     cursor->type = QXL_CURSOR_HIDE;
 
-    push_cursor(qxl, cursor);
+    push_cursor(compat_qxl, cursor);
 }
 
 static void
-qxl_show_cursor(ScrnInfoPtr pScrn)
+compat_qxl_show_cursor(ScrnInfoPtr pScrn)
 {
     /*
      * slightly hacky, but there's no QXL_CURSOR_SHOW.  Could maybe do
      * QXL_CURSOR_SET?
      */
-    qxl_screen_t *qxl = pScrn->driverPrivate;
+    compat_qxl_screen_t *compat_qxl = pScrn->driverPrivate;
 
-    qxl_set_cursor_position(pScrn, qxl->cur_x, qxl->cur_y);
+    compat_qxl_set_cursor_position(pScrn, compat_qxl->cur_x, compat_qxl->cur_y);
 }
 
 hidden void
-qxl_cursor_init(ScreenPtr pScreen)
+compat_qxl_cursor_init(ScreenPtr pScreen)
 {
     xf86CursorInfoPtr cursor;
 
@@ -182,14 +182,14 @@ qxl_cursor_init(ScreenPtr pScreen)
 
     cursor->MaxWidth = cursor->MaxHeight = 64;
     /* cursor->Flags; */
-    cursor->SetCursorPosition = qxl_set_cursor_position;
-    cursor->LoadCursorARGB = qxl_load_cursor_argb;
-    cursor->UseHWCursor = qxl_use_hw_cursor;
-    cursor->UseHWCursorARGB = qxl_use_hw_cursorARGB;
-    cursor->LoadCursorImage = qxl_load_cursor_image;
-    cursor->SetCursorColors = qxl_set_cursor_colors;
-    cursor->HideCursor = qxl_hide_cursor;
-    cursor->ShowCursor = qxl_show_cursor;
+    cursor->SetCursorPosition = compat_qxl_set_cursor_position;
+    cursor->LoadCursorARGB = compat_qxl_load_cursor_argb;
+    cursor->UseHWCursor = compat_qxl_use_hw_cursor;
+    cursor->UseHWCursorARGB = compat_qxl_use_hw_cursorARGB;
+    cursor->LoadCursorImage = compat_qxl_load_cursor_image;
+    cursor->SetCursorColors = compat_qxl_set_cursor_colors;
+    cursor->HideCursor = compat_qxl_hide_cursor;
+    cursor->ShowCursor = compat_qxl_show_cursor;
 
     if (!xf86InitCursor(pScreen, cursor))
 	xfree(cursor);
