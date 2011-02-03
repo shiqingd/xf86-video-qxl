@@ -83,5 +83,6 @@ AC_CONFIG_FILES([
                 Makefile
                 src/Makefile
 		src/uxa/Makefile
+		src/compat/Makefile
 ])
 AC_OUTPUT
