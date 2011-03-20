@@ -693,6 +693,9 @@ struct _qxl_screen_t
     uint8_t			vram_mem_slot;
 
     surface_cache_t *		surface_cache;
+
+    /* Evacuated surfaces are stored here during VT switches */
+    void *			vt_surfaces;
 };
 
 static inline uint64_t
@@ -766,6 +769,8 @@ void *
 qxl_surface_cache_evacuate_all (surface_cache_t *qxl);
 void
 qxl_surface_cache_replace_all (surface_cache_t *qxl, void *data);
+void
+qxl_surface_kill_evacuated (PixmapPtr pixmap, void *data);
 
 void		    qxl_surface_set_pixmap (qxl_surface_t *surface,
 					    PixmapPtr      pixmap);

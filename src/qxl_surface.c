@@ -1161,9 +1161,11 @@ qxl_surface_cache_evacuate_all (surface_cache_t *cache)
 
 	evacuated->image = s->host_image;
 	evacuated->pixmap = s->pixmap;
-
-	assert (get_surface (evacuated->pixmap) == s);
 	
+	assert (get_surface (evacuated->pixmap) == s);
+
+	set_surface (evacuated->pixmap, (qxl_surface_t *)evacuated);
+
 #if 0
 	ErrorF ("Evacuated %d => %p\n", s->id, evacuated->pixmap);
 #endif
@@ -1186,6 +1188,36 @@ qxl_surface_cache_evacuate_all (surface_cache_t *cache)
     cache->free_surfaces = NULL;
     
     return evacuated_surfaces;
+}
+
+void
+qxl_surface_kill_evacuated (PixmapPtr pixmap, void *data)
+{
+    evacuated_surface_t *ev;
+    evacuated_surface_t *pix_ev =
+	(evacuated_surface_t *)get_surface (pixmap);
+
+    if (pix_ev)
+    {
+	/* Sometimes we will be asked to destroy a pixmap while
+	 * we are switched away. We rely on such pixmaps
+	 * having a pointer to the evacuated surface. This
+	 * is taken care of in evacuate_all().
+	 */
+	 for (ev = data; ev != NULL; ev = ev->next)
+	 {
+	     if (ev == pix_ev)
+	     {
+		 /* In replace_all(), if the pixmap of an
+		  * evacuated surface is NULL, it won't
+		  * be replaced
+		  */
+		 ev->pixmap = NULL;
+		 set_surface (pixmap, NULL);
+		 break;
+	     }
+	 }
+    }
 }
 
 void
@@ -1213,31 +1245,36 @@ qxl_surface_cache_replace_all (surface_cache_t *cache, void *data)
 	int height = pixman_image_get_height (ev->image);
 	qxl_surface_t *surface;
 
-	surface = qxl_surface_create (cache, width, height, ev->bpp);
+	if (ev->pixmap)
+	{
+	    surface = qxl_surface_create (cache, width, height, ev->bpp);
 #if 0
-	ErrorF ("recreated %d\n", surface->id);
-	ErrorF ("%d => %p\n", surface->id, ev->pixmap);
+	    ErrorF ("recreated %d\n", surface->id);
+	    ErrorF ("%d => %p\n", surface->id, ev->pixmap);
 #endif
+	    
+	    assert (surface->host_image);
+	    assert (surface->dev_image);
+	    
+	    pixman_image_unref (surface->host_image);
+	    surface->host_image = ev->image;
+	    
+	    upload_box (surface, 0, 0, width, height);
+	    
+	    set_surface (ev->pixmap, surface);
 
-	assert (surface->host_image);
-	assert (surface->dev_image);
-
-	pixman_image_unref (surface->host_image);
-	surface->host_image = ev->image;
-
-	upload_box (surface, 0, 0, width, height);
-
-	set_surface (ev->pixmap, surface);
-
-	qxl_surface_set_pixmap (surface, ev->pixmap);
+	    qxl_surface_set_pixmap (surface, ev->pixmap);
+	}
+	else
+	{
+	    pixman_image_unref (ev->image);
+	}
 
 	free (ev);
-	
 	ev = next;
     }
 
     qxl_surface_cache_sanity_check (cache);
-
 }
 
 static void
