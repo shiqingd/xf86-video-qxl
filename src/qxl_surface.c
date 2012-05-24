@@ -752,18 +752,28 @@ unlink_surface (qxl_surface_t *surface)
 }
 
 static void
-send_destroy (qxl_surface_t *surface)
+surface_send_destroy(qxl_surface_t *surface)
 {
     struct QXLSurfaceCmd *cmd;
 
+#if 0
+    ErrorF("destroy %ld\n", (long int)surface->end - (long int)surface->address);
+#endif
+    cmd = make_surface_cmd (surface->cache, surface->id, QXL_SURFACE_CMD_DESTROY);
+
+    push_surface_cmd (surface->cache, cmd);
+}
+
+static void
+surface_destroy (qxl_surface_t *surface, int send_cmd)
+{
     if (surface->dev_image)
 	pixman_image_unref (surface->dev_image);
     if (surface->host_image)
 	pixman_image_unref (surface->host_image);
-    
-    cmd = make_surface_cmd (surface->cache, surface->id, QXL_SURFACE_CMD_DESTROY);
-    
-    push_surface_cmd (surface->cache, cmd);
+    if (send_cmd) {
+        surface_send_destroy (surface);
+    }
 }
 
 static void
@@ -844,7 +854,7 @@ qxl_surface_unref (surface_cache_t *cache, uint32_t id)
 	qxl_surface_t *surface = cache->all_surfaces + id;
 
 	if (--surface->ref_count == 0)
-	    send_destroy (surface);
+	    surface_destroy (surface, 1);
     }
 }
 
@@ -1096,7 +1106,7 @@ qxl_surface_cache_evacuate_all (surface_cache_t *cache)
     {
 	if (cache->cached_surfaces[i])
 	{
-	    send_destroy (cache->cached_surfaces[i]);
+            surface_destroy (cache->cached_surfaces[i], 1);
 	    cache->cached_surfaces[i] = NULL;
 	}
     }
