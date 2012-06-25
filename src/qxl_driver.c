@@ -557,10 +557,8 @@ qxl_map_memory(qxl_screen_t *qxl, int scrnIndex)
     qxl->mem = qxl_mem_create ((void *)((unsigned long)qxl->ram + qxl->surface0_size),
 			       qxl->mem_size);
     qxl->surf_mem = qxl_mem_create ((void *)((unsigned long)qxl->vram), qxl->vram_size);
-    qxl_allocate_monitors_config(qxl);
 
-    mspace_set_abort_func(qxl_mspace_abort_func);
-    mspace_set_print_func(qxl_mspace_print_func);
+    qxl_allocate_monitors_config(qxl);
 
     return TRUE;
 }
@@ -1845,6 +1843,9 @@ qxl_pre_init(ScrnInfoPtr pScrn, int flags)
 	return FALSE;
     
     CHECK_POINT();
+
+    mspace_set_abort_func(qxl_mspace_abort_func);
+    mspace_set_print_func(qxl_mspace_print_func);
 
     /* zaphod mode is for suckers and i choose not to implement it */
     if (xf86IsEntityShared(pScrn->entityList[0])) {
