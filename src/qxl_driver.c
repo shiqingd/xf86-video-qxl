@@ -408,6 +408,7 @@ static void
 map_memory_helper(qxl_screen_t *qxl)
 {
     qxl->ram = malloc(RAM_SIZE);
+    qxl->ram_size = RAM_SIZE;
     qxl->ram_physical = qxl->ram;
     qxl->vram = malloc(VRAM_SIZE);
     qxl->vram_size = VRAM_SIZE;
@@ -446,6 +447,7 @@ map_memory_helper(qxl_screen_t *qxl)
 			 PCI_DEV_MAP_FLAG_WRITABLE | PCI_DEV_MAP_FLAG_WRITE_COMBINE,
 			 &qxl->ram);
     qxl->ram_physical = u64_to_pointer (qxl->pci->regions[0].base_addr);
+    qxl->ram_size = qxl->pci->regions[0].size;
 
     pci_device_map_range(qxl->pci, qxl->pci->regions[1].base_addr,
 			 qxl->pci->regions[1].size,
