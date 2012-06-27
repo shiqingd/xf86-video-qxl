@@ -40,6 +40,7 @@
 #include <stdlib.h>
 
 #include <xf86Crtc.h>
+#include <X11/Xatom.h>
 
 #include "mspace.h"
 
@@ -57,6 +58,9 @@
 #endif /* XSPICE */
 
 extern void compat_init_scrn(ScrnInfoPtr);
+
+#define QXL_CONNECTED_ATOM_NAME "qxl_connected"
+static Atom qxl_connected_property;
 
 #if 0
 #define CHECK_POINT() ErrorF ("%s: %d  (%s)\n", __FILE__, __LINE__, __FUNCTION__);
@@ -1041,12 +1045,16 @@ qxl_create_screen_resources(ScreenPtr pScreen)
 
     if ((surf = get_surface (pPixmap)))
 	qxl_surface_kill (surf);
-    
+
     set_surface (pPixmap, qxl->primary);
 
     /* HACK - I don't want to enable any crtcs other then the first at the beginning */
-    for (i = 1; i < qxl->num_heads; ++i) {
+    for (i = 1; i < qxl->num_heads; ++i)
+    {
+        qxl_output_private *private;
         qxl->crtcs[i]->enabled = 0;
+        private = qxl->outputs[i]->driver_private;
+        private->status = XF86OutputStatusDisconnected;
     }
 
     qxl_create_desired_modes(qxl);
@@ -1400,6 +1408,8 @@ qxl_fb_init(qxl_screen_t *qxl, ScreenPtr pScreen)
     return TRUE;
 }
 
+static void qxl_init_randr_final(qxl_screen_t *qxl);
+
 static Bool
 qxl_screen_init(SCREEN_INIT_ARGS_DECL)
 {
@@ -1529,6 +1539,8 @@ qxl_screen_init(SCREEN_INIT_ARGS_DECL)
     if (!uxa_resources_init (pScreen))
 	return FALSE;
     CHECK_POINT();
+
+    qxl_init_randr_final(qxl);
 
     return TRUE;
     
@@ -1747,8 +1759,17 @@ static Bool
 qxl_output_set_property(xf86OutputPtr output, Atom property,
         RRPropertyValuePtr value)
 {
-    /* EDID data is stored in the "EDID" atom property, we must return
-     * TRUE here for that. No penalty to say ok to everything else. */
+    qxl_output_private *qxl_output = output->driver_private;
+
+    if (property == qxl_connected_property && qxl_output->head != 0) {
+        if (*(long *)value->data) {
+            qxl_output->status = XF86OutputStatusConnected;
+            qxl_output_edid_set(output, qxl_output->head,
+                                output->crtc ? &output->crtc->mode : NULL);
+        } else {
+            qxl_output->status = XF86OutputStatusDisconnected;
+        }
+    }
     return TRUE;
 }
 
@@ -1761,10 +1782,15 @@ qxl_output_get_property(xf86OutputPtr output, Atom property)
 static xf86OutputStatus
 qxl_output_detect(xf86OutputPtr output)
 {
+    // TEST: reply according to wether guest has set the monitor or not. Will fail
+    // to let stuff like gnome-control-center add any monitors (good thing), just
+    // need to make sure I still let the agent succeed
     // TODO - how do I query this? do I add fields and let the host set this instead
     // of the guest agent? or can I set this via the guest agent? I could just check
     // some files / anything in userspace, settable by the guest agent. dbus even.
-    return XF86OutputStatusConnected;
+    qxl_output_private *qxl_output = output->driver_private;
+
+    return qxl_output->status;
 }
 
 static Bool
@@ -1913,6 +1939,22 @@ static const xf86CrtcConfigFuncsRec qxl_xf86crtc_config_funcs = {
 };
 
 static void
+qxl_init_randr_final(qxl_screen_t *qxl)
+{
+    int i;
+    long qxl_connected = 0;
+
+    for (i = 0 ; i < qxl->num_heads ; ++i)
+    {
+        qxl_connected = (i == 0);
+        RRChangeOutputProperty(qxl->outputs[i]->randr_output,
+                               qxl_connected_property, XA_INTEGER, 8,
+                               PropModeReplace, 1, &qxl_connected, FALSE,
+                               FALSE);
+    }
+}
+
+static void
 qxl_init_randr(ScrnInfoPtr pScrn, qxl_screen_t *qxl)
 {
     char name[32];
@@ -1921,10 +1963,12 @@ qxl_init_randr(ScrnInfoPtr pScrn, qxl_screen_t *qxl)
     int i;
     xf86OutputPtr output;
 
+    qxl_connected_property = MakeAtom(QXL_CONNECTED_ATOM_NAME,
+                                      sizeof(QXL_CONNECTED_ATOM_NAME) - 1,
+                                      TRUE);
+
     xf86CrtcConfigInit(pScrn, &qxl_xf86crtc_config_funcs);
 
-    /* CHECKME: This is actually redundant, it's overwritten by a later call via
-     * xf86InitialConfiguration */
     xf86CrtcSetSizeRange(pScrn, 320, 200, 8192, 8192);
 
     qxl->crtcs = xnfcalloc(sizeof(xf86CrtcPtr), qxl->num_heads);
@@ -1951,6 +1995,7 @@ qxl_init_randr(ScrnInfoPtr pScrn, qxl_screen_t *qxl)
         output->driver_private = qxl_output;
         qxl_output->head = i;
         qxl_output->qxl = qxl;
+        qxl_output->status = XF86OutputStatusConnected;
         qxl_crtc->output = output;
     }
 
