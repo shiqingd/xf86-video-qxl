@@ -1796,7 +1796,14 @@ static Bool
 qxl_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
                         Rotation rotation, int x, int y)
 {
-    qxl_screen_t *qxl = crtc->driver_private;
+    qxl_crtc_private *crtc_private = crtc->driver_private;
+    qxl_screen_t *qxl = crtc_private->qxl;
+
+    if (crtc == qxl->crtcs[0] && mode == NULL) {
+        /* disallow disabling of monitor 0 mode */
+        ErrorF ("%s: not allowing crtc 0 disablement\n", __func__);
+        return FALSE;
+    }
 
     crtc->mode = *mode;
     crtc->x = x;
@@ -1844,7 +1851,8 @@ qxl_crtc_gamma_set(xf86CrtcPtr crtc, uint16_t *red, uint16_t *green,
 static void
 qxl_crtc_destroy (xf86CrtcPtr crtc)
 {
-    qxl_screen_t *qxl = crtc->driver_private;
+    qxl_crtc_private *crtc_private = crtc->driver_private;
+    qxl_screen_t *qxl = crtc_private->qxl;
 
     xf86DrvMsg(qxl->pScrn->scrnIndex, X_INFO, "%s\n", __func__);
 }
@@ -1852,7 +1860,8 @@ qxl_crtc_destroy (xf86CrtcPtr crtc)
 static Bool
 qxl_crtc_lock (xf86CrtcPtr crtc)
 {
-    qxl_screen_t *qxl = crtc->driver_private;
+    qxl_crtc_private *crtc_private = crtc->driver_private;
+    qxl_screen_t *qxl = crtc_private->qxl;
 
     xf86DrvMsg(qxl->pScrn->scrnIndex, X_INFO, "%s\n", __func__);
     return TRUE;
@@ -1861,7 +1870,8 @@ qxl_crtc_lock (xf86CrtcPtr crtc)
 static void
 qxl_crtc_unlock (xf86CrtcPtr crtc)
 {
-    qxl_screen_t *qxl = crtc->driver_private;
+    qxl_crtc_private *crtc_private = crtc->driver_private;
+    qxl_screen_t *qxl = crtc_private->qxl;
 
     xf86DrvMsg(qxl->pScrn->scrnIndex, X_INFO, "%s\n", __func__);
     qxl_update_monitors_config(qxl);
@@ -1907,6 +1917,7 @@ qxl_init_randr(ScrnInfoPtr pScrn, qxl_screen_t *qxl)
 {
     char name[32];
     qxl_output_private *qxl_output;
+    qxl_crtc_private *qxl_crtc;
     int i;
     xf86OutputPtr output;
 
@@ -1924,7 +1935,10 @@ qxl_init_randr(ScrnInfoPtr pScrn, qxl_screen_t *qxl)
             xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "failed to create Crtc %d",
                        i);
         }
-        qxl->crtcs[i]->driver_private = qxl;
+        qxl_crtc = xnfcalloc(sizeof(qxl_crtc_private), 1);
+        qxl->crtcs[i]->driver_private = qxl_crtc;
+        qxl_crtc->head = i;
+        qxl_crtc->qxl = qxl;
         snprintf(name, sizeof(name), "qxl-%d", i);
         qxl->outputs[i] = output = xf86OutputCreate(pScrn, &qxl_output_funcs, name);
         if (!output) {
@@ -1937,6 +1951,7 @@ qxl_init_randr(ScrnInfoPtr pScrn, qxl_screen_t *qxl)
         output->driver_private = qxl_output;
         qxl_output->head = i;
         qxl_output->qxl = qxl;
+        qxl_crtc->output = output;
     }
 
     qxl->virtual_x = 1024;
