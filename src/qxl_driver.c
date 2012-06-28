@@ -1762,7 +1762,7 @@ qxl_output_set_property(xf86OutputPtr output, Atom property,
     qxl_output_private *qxl_output = output->driver_private;
 
     if (property == qxl_connected_property && qxl_output->head != 0) {
-        if (*(long *)value->data) {
+        if (*(unsigned char *)value->data) {
             qxl_output->status = XF86OutputStatusConnected;
             qxl_output_edid_set(output, qxl_output->head,
                                 output->crtc ? &output->crtc->mode : NULL);
