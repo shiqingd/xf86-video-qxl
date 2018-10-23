@@ -792,6 +792,7 @@ qxl_surface_cache_evacuate_all (surface_cache_t *cache)
 
 	unlink_surface (s);
 	
+	evacuated->prev = NULL;
 	evacuated->next = evacuated_surfaces;
         if (evacuated_surfaces)
             evacuated_surfaces->prev = evacuated;
