@@ -32,7 +32,7 @@ ChangeLog:
 dist-hook: ChangeLog INSTALL
 
 EXTRA_DIST = \
-	README			\
+	README.md		\
 	README.xspice
 
 DISTCHECK_CONFIGURE_FLAGS=--enable-xspice
