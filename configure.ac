@@ -24,7 +24,7 @@
 AC_PREREQ([2.60])
 AC_INIT([xf86-video-qxl],
         [0.1.5],
-        [https://bugs.freedesktop.org/enter_bug.cgi?product=xorg],
+        [https://gitlab.freedesktop.org/xorg/driver/xf86-video-qxl/issues],
         [xf86-video-qxl])
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CANONICAL_HOST
