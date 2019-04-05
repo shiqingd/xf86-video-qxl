@@ -138,9 +138,11 @@ static void xspice_keyboard_control(DeviceIntPtr device, KeybdCtrl *ctrl)
     };
 
     XSpiceKbd *kbd;
+    InputInfoPtr pInfo;
     int i;
 
-    kbd = device->public.devicePrivate;
+    pInfo = device->public.devicePrivate;
+    kbd = pInfo->private;
     kbd->ledstate = 0;
     for (i = 0; i < ArrayLength(bits); i++) {
         if (ctrl->leds & bits[i].xbit) {
